@@ -166,6 +166,16 @@ func (el *Element) Plaintext() *Plaintext {
 	return &Plaintext{el, el.value[0]}
 }
 
+func getSmallestLargest(el0, el1 *Element) (smallest, largest *Element, sameDegree bool) {
+	switch {
+	case el0.Degree() > el1.Degree():
+		return el1, el0, false
+	case el0.Degree() < el1.Degree():
+		return el0, el1, false
+	}
+	return el0, el1, true
+}
+
 func newCiphertextElement(params *Parameters, degree int) *Element {
 	el := new(Element)
 	el.value = make([]*ring.Poly, degree+1)
