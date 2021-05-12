@@ -1335,18 +1335,3 @@ func (encoder *encoderBigComplex) FFT(values []*ring.Complex, N int) {
 		}
 	}
 }
-
-// TODO: move to bootstrap_params.go
-func rotate(x []complex128, n int) (y []complex128) {
-
-	y = make([]complex128, len(x))
-
-	mask := int(len(x) - 1)
-
-	// Rotates to the left
-	for i := 0; i < len(x); i++ {
-		y[i] = x[(i+n)&mask]
-	}
-
-	return
-}

@@ -1,6 +1,7 @@
 package ckks_fv
 
 import (
+	"math"
 	"math/big"
 
 	"github.com/ldsec/lattigo/v2/ring"
@@ -25,7 +26,7 @@ type KeyGenerator interface {
 
 	GenRotationKeysForRotations(ks []int, includeConjugate bool, sk *SecretKey) (rks *RotationKeySet)
 
-	// GenRotationIndexesForBootstrapping(logSlots int, btpParams *BootstrappingParameters) []int
+	GenRotationIndexesForBootstrapping(logSlots int, btpParams *BootstrappingParameters) []int
 
 	GenRotationIndexesForInnerSum(batch, n int) []int
 
@@ -372,7 +373,6 @@ func (keygen *keyGenerator) GenRotationIndexesForDiagMatrix(matrix *PtDiagMatrix
 	return rotKeyIndex
 }
 
-/*
 func addMatrixRotToList(pVec map[int]bool, rotations []int, N1, slots int, repack bool) []int {
 
 	if len(pVec) < 3 {
@@ -558,4 +558,3 @@ func nextLevelfftIndexMap(vec map[int]bool, logL, N, nextLevel int, forward, bit
 
 	return
 }
-*/
