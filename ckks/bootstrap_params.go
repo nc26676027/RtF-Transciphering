@@ -1,8 +1,9 @@
 package ckks
 
 import (
-	"github.com/ldsec/lattigo/v2/utils"
 	"math"
+
+	"github.com/ldsec/lattigo/v2/utils"
 	//"fmt"
 )
 
@@ -283,6 +284,10 @@ func (b *BootstrappingParameters) GenSlotsToCoeffsMatrix(scaling complex128, enc
 	}
 
 	return pDFT
+}
+
+func (b *BootstrappingParameters) SetLogSlots(logslot int) {
+	b.LogSlots = logslot
 }
 
 // DefaultBootstrapParams are default bootstrapping params for the bootstrapping.

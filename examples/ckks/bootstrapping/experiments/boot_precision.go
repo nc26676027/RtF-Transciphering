@@ -54,6 +54,7 @@ func main() {
 
 	switch exp {
 	case "successive":
+		btpParams.SetLogSlots(*logslot)
 		params.SetLogSlots(*logslot)
 		log.Printf("%% program args: paramSet=%d, nboot=%d, hw=%d, logslot=%d\n", *paramSet, *nboot, btpParams.H, *logslot)
 		encoder, encryptor, evaluator, decryptor, bootstrapper := instanciateExperiment(params, btpParams)
@@ -82,6 +83,7 @@ func main() {
 		break
 
 	case "slotdist":
+		btpParams.SetLogSlots(*logslot)
 		params.SetLogSlots(*logslot)
 		log.Printf("%% program args: paramSet=%d, hw=%d, logslot=%d\n", *paramSet, btpParams.H, *logslot)
 		encoder, encryptor, _, decryptor, bootstrapper := instanciateExperiment(params, btpParams)
@@ -109,6 +111,7 @@ func main() {
 		log.Printf("%% program args: paramSet=%d, hw=%d\n", *paramSet, btpParams.H)
 		for i, logSloti := 0, minLogSlots; logSloti <= params.LogN()-1; i, logSloti = i+1, logSloti+1 {
 			log.Println("running experiment for logslot =", logSloti)
+			btpParams.SetLogSlots(logSloti)
 			params.SetLogSlots(logSloti)
 
 			encoder, encryptor, _, decryptor, bootstrapper := instanciateExperiment(params, btpParams)
@@ -152,14 +155,14 @@ func instanciateExperiment(params *ckks.Parameters, btpParams *ckks.Bootstrappin
 	encryptor = ckks.NewEncryptorFromPk(params, pk)
 	decryptor = ckks.NewDecryptor(params, sk)
 
-	evaluator = ckks.NewEvaluator(params, ckks.EvaluationKey{nil, nil})
+	evaluator = ckks.NewEvaluator(params, ckks.EvaluationKey{Rlk: nil, Rtks: nil})
 
 	log.Println("Generating the keys...")
 
 	rotations := keyGen.GenRotationIndexesForBootstrapping(params.LogSlots(), btpParams)
 	rotkeys := keyGen.GenRotationKeysForRotations(rotations, true, sk)
 	rlk := keyGen.GenRelinearizationKey(sk)
-	btpKey := ckks.BootstrappingKey{rlk, rotkeys}
+	btpKey := ckks.BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
 
 	log.Println("Done")
 	bootstrapper, err = ckks.NewBootstrapper(params, btpParams, btpKey)
