@@ -37,6 +37,7 @@ type FVEvaluator interface {
 	RotateColumns(ct0 *Ciphertext, k int, ctOut *Ciphertext)
 	RotateRows(ct0 *Ciphertext, ctOut *Ciphertext)
 	RotateRowsNew(ct0 *Ciphertext) (ctOut *Ciphertext)
+	TransformToNTT(ct0 *Ciphertext, ctOut *Ciphertext)
 	InnerSum(ct0 *Ciphertext, ctOut *Ciphertext)
 	ShallowCopy() FVEvaluator
 	WithKey(EvaluationKey) FVEvaluator
@@ -703,6 +704,19 @@ func (eval *fvEvaluator) RotateRowsNew(ct0 *Ciphertext) (ctOut *Ciphertext) {
 	ctOut = NewCiphertextFV(eval.params, 1)
 	eval.RotateRows(ct0, ctOut)
 	return
+}
+
+// TransformToNTT transforms ct0 into NTT form and returns the result in ctOut
+func (eval *fvEvaluator) TransformToNTT(ct0 *Ciphertext, ctOut *Ciphertext) {
+	if ct0.Degree() != ctOut.Degree() {
+		panic("cannot TransformToNTT: input and output must have the same degree")
+	}
+
+	for i := range ct0.value {
+		eval.ringQ.NTT(ct0.value[i], ctOut.value[i])
+	}
+
+	ctOut.SetIsNTT(true)
 }
 
 // InnerSum computes the inner sum of ct0 and returns the result in ctOut. It requires a rotation key storing all the left powers of two rotations.

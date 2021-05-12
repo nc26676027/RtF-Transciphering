@@ -110,6 +110,7 @@ type CKKSEvaluator interface {
 	ScaleUp(ct0 *Ciphertext, scale float64, ctOut *Ciphertext)
 	SetScale(ct *Ciphertext, scale float64)
 	Rescale(ct0 *Ciphertext, minScale float64, c1 *Ciphertext) (err error)
+	RescaleMany(ct0 *Ciphertext, nbRescales int, ct1 *Ciphertext) (err error)
 
 	// Level Management
 	DropLevelNew(ct0 *Ciphertext, levels int) (ctOut *Ciphertext)
@@ -1333,6 +1334,33 @@ func (eval *ckksEvaluator) Rescale(ctIn *Ciphertext, minScale float64, ctOut *Ci
 		for i := range ctOut.Value() {
 			ringQ.DivRoundByLastModulusMany(ctIn.Value()[i], ctOut.Value()[i], nbRescale)
 		}
+	}
+
+	return nil
+}
+
+// RescaleMany applies Rescale several times in a row on the input Ciphertext.
+func (eval *ckksEvaluator) RescaleMany(ct0 *Ciphertext, nbRescales int, ctOut *Ciphertext) (err error) {
+
+	if ct0.Level() < nbRescales {
+		return errors.New("cannot RescaleMany: input Ciphertext level too low")
+	}
+
+	if ct0.Level() != ctOut.Level() {
+		panic("cannot RescaleMany: degrees of receiver Ciphertext and input Ciphertext do not match")
+	}
+
+	if !ct0.IsNTT() {
+		panic("cannot RescaleMany: input Ciphertext not in NTT")
+	}
+
+	ctOut.Copy(ct0.El())
+	for i := 0; i < nbRescales; i++ {
+		ctOut.DivScale(float64(eval.ringQ.Modulus[ctOut.Level()-i]))
+	}
+
+	for i := range ctOut.Value() {
+		eval.ringQ.DivRoundByLastModulusManyNTT(ctOut.Value()[i], ctOut.Value()[i], nbRescales)
 	}
 
 	return nil

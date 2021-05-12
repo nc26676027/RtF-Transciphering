@@ -50,6 +50,9 @@ type Encoder interface {
 
 	EncodeDiagMatrixAtLvl(level int, vector map[int][]complex128, scale, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrix)
 
+	EncodeComplexRingT(ptRt *PlaintextRingT, values []complex128, logSlots int)
+	EncodeComplexRingTNew(values []complex128, logSlots int) (ptRt *PlaintextRingT)
+
 	DecodeComplex(plaintext *Plaintext, logSlots int) (res []complex128)
 	DecodeComplexPublic(plaintext *Plaintext, logSlots int, sigma float64) []complex128
 
@@ -61,6 +64,9 @@ type Encoder interface {
 	EncodeCoeffs(values []float64, plaintext *Plaintext)
 	DecodeCoeffs(plaintext *Plaintext) (res []float64)
 	DecodeCoeffsPublic(plaintext *Plaintext, bound float64) (res []float64)
+
+	EncodeCoeffsRingT(values []float64, ptRt *PlaintextRingT)
+	EncodeCoeffsRingTNew(values []float64, scale float64) (ptRt *PlaintextRingT)
 
 	GetErrSTDTimeDom(valuesWant, valuesHave []complex128, scale float64) (std float64)
 	GetErrSTDFreqDom(valuesWant, valuesHave []complex128, scale float64) (std float64)
@@ -513,6 +519,22 @@ func (encoder *encoderComplex128) EmbedComplex(values []complex128, logSlots int
 	}
 }
 
+// EncodeComplexRingT encdoes a slice of complex128 of length slots = 2^{logSlots} on the input plaintext of RingT.
+func (encoder *encoderComplex128) EncodeComplexRingT(pt *PlaintextRingT, values []complex128, logSlots int) {
+	pt.scale = encoder.params.scale
+	encoder.EmbedComplex(values, logSlots)
+	encoder.CKKSScaleUp(pt.value, pt.scale, encoder.ringT.Modulus[:1])
+	encoder.WipeInternalMemory()
+	pt.isNTT = false
+}
+
+// EncodeComplexRingTNew encdoes a slice of complex128 of length slots = 2^{logSlots} on new plaintext of RingT at level 0.
+func (encoder *encoderComplex128) EncodeComplexRingTNew(values []complex128, logSlots int) (ptRt *PlaintextRingT) {
+	ptRt = NewPlaintextRingT(encoder.params)
+	encoder.EncodeComplexRingT(ptRt, values, logSlots)
+	return
+}
+
 // GetErrSTDFreqDom returns the scaled standard deviation of the difference between two complex vectors in the slot domains
 func (encoder *encoderComplex128) GetErrSTDFreqDom(valuesWant, valuesHave []complex128, scale float64) (std float64) {
 
@@ -943,6 +965,27 @@ func (encoder *encoderComplex128) EncodeCoeffsNTT(values []float64, plaintext *P
 	encoder.EncodeCoeffs(values, plaintext)
 	encoder.ringQ.NTTLvl(plaintext.Level(), plaintext.value, plaintext.value)
 	plaintext.isNTT = true
+}
+
+// EncodeCoeffsRingT takes as input a polynomial $a0 + a1x + a2x^2 + ... + an-1x^n-1 with float coefficient
+// and returns a scaled integer plaintext polynomial over RingT.
+func (encoder *encoderComplex128) EncodeCoeffsRingT(values []float64, ptRt *PlaintextRingT) {
+	if len(values) > encoder.params.N() {
+		panic("cannot EncodeCoeffs: too many values (maximum is N)")
+	}
+
+	scaleUpVecExact(values, ptRt.scale, encoder.ringT.Modulus[:1], ptRt.value.Coeffs)
+	ptRt.isNTT = false
+}
+
+// EncodeCoeffsRingTNew takes as input a polynomial $a0 + a1x + a2x^2 + ... + an-1x^n-1 with float coefficient
+// and returns a scaled integer plaintext polynomial over RingT.
+func (encoder *encoderComplex128) EncodeCoeffsRingTNew(values []float64, scale float64) (ptRt *PlaintextRingT) {
+	ptRt = NewPlaintextRingT(encoder.params)
+	ptRt.SetScale(scale)
+	encoder.EncodeCoeffsRingT(values, ptRt)
+
+	return ptRt
 }
 
 // DecodeCoeffsPublic takes as input a plaintext and returns the scaled down coefficient of the plaintext in float64.
