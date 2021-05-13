@@ -27,6 +27,7 @@ type KeyGenerator interface {
 	GenRotationKeysForRotations(ks []int, includeConjugate bool, sk *SecretKey) (rks *RotationKeySet)
 
 	GenRotationIndexesForBootstrapping(logSlots int, btpParams *BootstrappingParameters) []int
+	GenRotationIndexesForHalfBoot(logSlots int, hbtpParams *HalfBootParameters) []int
 
 	GenRotationIndexesForInnerSum(batch, n int) []int
 
@@ -444,6 +445,37 @@ func (keygen *keyGenerator) GenRotationIndexesForBootstrapping(logSlots int, btp
 	for i, pVec := range indexStC {
 		N1 := findbestbabygiantstepsplit(pVec, dslots, btpParams.MaxN1N2Ratio)
 		rotations = addMatrixRotToList(pVec, rotations, N1, slots, logSlots < logN-1 && i == 0)
+	}
+
+	return
+}
+
+func (keygen *keyGenerator) GenRotationIndexesForHalfBoot(logSlots int, hbtpParams *HalfBootParameters) (rotations []int) {
+
+	// List of the rotation key values to needed for the bootstrapp
+	rotations = []int{}
+
+	logN := int(keygen.params.logN)
+
+	slots := 1 << logSlots
+	dslots := slots
+	if logSlots < logN-1 {
+		dslots <<= 1
+	}
+
+	//SubSum rotation needed X -> Y^slots rotations
+	for i := logSlots; i < logN-1; i++ {
+		if !utils.IsInSliceInt(1<<i, rotations) {
+			rotations = append(rotations, 1<<i)
+		}
+	}
+
+	indexCtS := computeBootstrappingDFTIndexMap(logN, logSlots, hbtpParams.CtSDepth(false), true)
+
+	// Coeffs to Slots rotations
+	for _, pVec := range indexCtS {
+		N1 := findbestbabygiantstepsplit(pVec, dslots, hbtpParams.MaxN1N2Ratio)
+		rotations = addMatrixRotToList(pVec, rotations, N1, slots, false)
 	}
 
 	return
