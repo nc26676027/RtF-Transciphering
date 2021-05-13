@@ -168,16 +168,224 @@ func transcipheringWithBoot() {
 	printDebug(params, cipherBoot, ckksData, ckksDecryptor, encoder)
 }
 
+func halfboot() {
+	fmt.Println("==== HalfBoot ====")
+	var err error
+
+	var hbtp *ckks_fv.HalfBootstrapper
+	var kgen ckks_fv.KeyGenerator
+	var encoder ckks_fv.Encoder
+	var sk *ckks_fv.SecretKey
+	var pk *ckks_fv.PublicKey
+	var encryptor ckks_fv.CKKSEncryptor
+	var decryptor ckks_fv.CKKSDecryptor
+	var evaluator ckks_fv.CKKSEvaluator
+	var plaintext *ckks_fv.Plaintext
+
+	// Half-Bootstrapping parameters
+	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
+	// are available in github.com/ldsec/lattigo/v2/ckks/halfboot_params
+	// LogSlots is hardcoded to 15 in the parameters, but can be changed from 1 to 15.
+	// When changing logSlots make sure that the number of levels allocated to CtS is
+	// smaller or equal to logSlots.
+
+	hbtpParams := ckks_fv.DefaultHalfBootParams[1]
+	params, err := hbtpParams.Params()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println()
+	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), hbtpParams.H, params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
+
+	// Scheme context and keys
+	kgen = ckks_fv.NewKeyGenerator(params)
+
+	sk, pk = kgen.GenKeyPairSparse(hbtpParams.H)
+
+	encoder = ckks_fv.NewEncoder(params)
+	decryptor = ckks_fv.NewCKKSDecryptor(params, sk)
+	encryptor = ckks_fv.NewCKKSEncryptorFromPk(params, pk)
+
+	fmt.Println()
+	fmt.Println("Generating half-bootstrapping keys...")
+	rotations := kgen.GenRotationIndexesForHalfBoot(params.LogSlots(), hbtpParams)
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	rlk := kgen.GenRelinearizationKey(sk)
+	hbtpKey := ckks_fv.BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
+
+	if hbtp, err = ckks_fv.NewHalfBootstrapper(params, hbtpParams, hbtpKey); err != nil {
+		panic(err)
+	}
+	fmt.Println("Done")
+	evaluator = ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk})
+
+	// Encode random floats to plaintext coefficients
+	fmt.Println()
+	fmt.Println("Encode random numbers on coefficients...")
+	randomCoeffs := make([]float64, params.N())
+	for i := range randomCoeffs {
+		randomCoeffs[i] = utils.RandFloat64(0, 1)
+	}
+
+	plaintext = ckks_fv.NewPlaintextCKKS(params, 0, params.Scale())
+	encoder.EncodeCoeffs(randomCoeffs, plaintext)
+	valuesWant := encoder.DecodeComplex(plaintext, params.LogSlots())
+	fmt.Println("Done")
+
+	// Encrypt and rescale to the lowest level
+	fmt.Println()
+	fmt.Println("Encryption and rescaling to level 0...")
+	ciphertext1 := encryptor.EncryptNew(plaintext)
+	evaluator.RescaleMany(ciphertext1, ciphertext1.Level(), ciphertext1)
+	fmt.Println("Done")
+	printDebug(params, ciphertext1, valuesWant, decryptor, encoder)
+
+	// Half-Bootstrap the ciphertext (homomorphic evaluation of ModRaise -> SubSum -> CtS -> EvalMod)
+	// It takes a ciphertext at level 0 (if not at level 0, then it will reduce it to level 0)
+	// and returns a ciphertext at level MaxLevel - k, where k is the depth of the bootstrapping circuit.
+	// Difference from the bootstrapping is that the last StC is missing.
+	// CAUTION: the scale of the ciphertext MUST be equal (or very close) to params.Scale
+	// To equalize the scale, the function evaluator.SetScale(ciphertext, parameters.Scale) can be used at the expense of one level.
+	fmt.Println()
+	fmt.Println("Half-Bootstrapping...")
+
+	ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertext1)
+	fmt.Println("Done")
+
+	valuesWant0 := make([]complex128, params.Slots())
+	valuesWant1 := make([]complex128, params.Slots())
+	for i := 0; i < params.Slots(); i++ {
+		j := utils.BitReverse64(uint64(i), uint64(params.LogSlots()))
+		valuesWant0[i] = complex(randomCoeffs[j], 0)
+		valuesWant1[i] = complex(randomCoeffs[j+uint64(params.Slots())], 0)
+	}
+
+	fmt.Println()
+	fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
+	printDebug(params, ctBoot0, valuesWant0, decryptor, encoder)
+	printDebug(params, ctBoot1, valuesWant1, decryptor, encoder)
+}
+
+func RtF() {
+	fmt.Println("==== RtF Framework ====")
+	var err error
+
+	var hbtp *ckks_fv.HalfBootstrapper
+	var kgen ckks_fv.KeyGenerator
+	var encoder ckks_fv.Encoder
+	var sk *ckks_fv.SecretKey
+	var pk *ckks_fv.PublicKey
+	var fvEncryptor ckks_fv.FVEncryptor
+	var ckksDecryptor ckks_fv.CKKSDecryptor
+	var fvEvaluator ckks_fv.FVEvaluator
+	var ckksEvaluator ckks_fv.CKKSEvaluator
+	var plaintext *ckks_fv.Plaintext
+
+	// Half-Bootstrapping parameters
+	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
+	// are available in github.com/ldsec/lattigo/v2/ckks/halfboot_params
+	// LogSlots is hardcoded to 15 in the parameters, but can be changed from 1 to 15.
+	// When changing logSlots make sure that the number of levels allocated to CtS is
+	// smaller or equal to logSlots.
+
+	hbtpParams := ckks_fv.DefaultHalfBootParams[0]
+	params, err := hbtpParams.Params()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println()
+	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), hbtpParams.H, params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
+
+	// Scheme context and keys
+	kgen = ckks_fv.NewKeyGenerator(params)
+
+	sk, pk = kgen.GenKeyPairSparse(hbtpParams.H)
+
+	encoder = ckks_fv.NewEncoder(params)
+	fvEncryptor = ckks_fv.NewFVEncryptorFromPk(params, pk)
+	ckksDecryptor = ckks_fv.NewCKKSDecryptor(params, sk)
+
+	fmt.Println()
+	fmt.Println("Generating half-bootstrapping keys...")
+	rotations := kgen.GenRotationIndexesForHalfBoot(params.LogSlots(), hbtpParams)
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	rlk := kgen.GenRelinearizationKey(sk)
+	hbtpKey := ckks_fv.BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
+
+	if hbtp, err = ckks_fv.NewHalfBootstrapper(params, hbtpParams, hbtpKey); err != nil {
+		panic(err)
+	}
+	fmt.Println("Done")
+	fvEvaluator = ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{})
+	ckksEvaluator = ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk})
+
+	// Encode random floats to plaintext coefficients
+	fmt.Println()
+	fmt.Println("Encode random numbers on coefficients...")
+	randomCoeffs := make([]float64, params.N())
+	for i := range randomCoeffs {
+		randomCoeffs[i] = utils.RandFloat64(-1.0, 1.0)
+	}
+
+	// plaintext = ckks_fv.NewPlaintextCKKS(params, 0, params.Scale())
+	// encoder.EncodeCoeffs(randomCoeffs, plaintext)
+	// valuesWant := encoder.DecodeComplex(plaintext, params.LogSlots())
+
+	plainCKKSRingT := encoder.EncodeCoeffsRingTNew(randomCoeffs, float64(params.T())/(1<<11))
+	plaintext = ckks_fv.NewPlaintextFV(params)
+	encoder.FVScaleUp(plainCKKSRingT, plaintext)
+
+	fmt.Println("Done")
+
+	// Encrypt and rescale to the lowest level
+	fmt.Println()
+	fmt.Println("Encryption and rescaling to level 0...")
+	ciphertext := fvEncryptor.EncryptNew(plaintext)
+	fvEvaluator.TransformToNTT(ciphertext, ciphertext)
+	ckksEvaluator.RescaleMany(ciphertext, ciphertext.Level(), ciphertext)
+	ciphertext.SetScale(float64(params.Qi()[0]) / (1 << 11))
+	fmt.Println("Done")
+
+	// Half-Bootstrap the ciphertext (homomorphic evaluation of ModRaise -> SubSum -> CtS -> EvalMod)
+	// It takes a ciphertext at level 0 (if not at level 0, then it will reduce it to level 0)
+	// and returns a ciphertext at level MaxLevel - k, where k is the depth of the bootstrapping circuit.
+	// Difference from the bootstrapping is that the last StC is missing.
+	// CAUTION: the scale of the ciphertext MUST be equal (or very close) to params.Scale
+	// To equalize the scale, the function evaluator.SetScale(ciphertext, parameters.Scale) can be used at the expense of one level.
+	fmt.Println()
+	fmt.Println("Half-Bootstrapping...")
+
+	ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertext)
+	fmt.Println("Done")
+
+	valuesWant0 := make([]complex128, params.Slots())
+	valuesWant1 := make([]complex128, params.Slots())
+	for i := 0; i < params.Slots(); i++ {
+		j := utils.BitReverse64(uint64(i), uint64(params.LogSlots()))
+		valuesWant0[i] = complex(randomCoeffs[j], 0)
+		valuesWant1[i] = complex(randomCoeffs[j+uint64(params.Slots())], 0)
+	}
+
+	fmt.Println()
+	fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
+	printDebug(params, ctBoot0, valuesWant0, ckksDecryptor, encoder)
+	printDebug(params, ctBoot1, valuesWant1, ckksDecryptor, encoder)
+}
+
 func main() {
 	var input string
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2.\n"
+	choice := "Choose one of 0, 1, 2, 3.\n"
 	for true {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): Transciphering")
 		fmt.Println("  (2): Transciphering with Bootstrapping")
+		fmt.Println("  (3): HalfBoot")
+		fmt.Println("  (4): RtF Framework")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -192,6 +400,12 @@ func main() {
 			case 2:
 				fmt.Println()
 				transcipheringWithBoot()
+			case 3:
+				fmt.Println()
+				halfboot()
+			case 4:
+				fmt.Println()
+				RtF()
 			default:
 				fmt.Println(choice)
 			}
