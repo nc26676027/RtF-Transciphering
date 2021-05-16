@@ -780,6 +780,25 @@ func fftInvPlainVec(logN, dslots int, roots []complex128, pow5 []int) (a, b, c [
 	return
 }
 
+func computeRepackMatrices(logSlots int, diffscale complex128) (plainVector []map[int][]complex128) {
+
+	bitreversed := false
+
+	plainVector = make([]map[int][]complex128, 1)
+	plainVector[0] = genRepackMatrix(logSlots, bitreversed)
+
+	// Rescaling of the DFT matrix of the SlotsToCoeffs/CoeffsToSlots
+	// for j := range plainVector {
+	// 	for x := range plainVector[j] {
+	// 		for i := range plainVector[j][x] {
+	// 			plainVector[j][x][i] *= diffscale
+	// 		}
+	// 	}
+	// }
+
+	return
+}
+
 func computeDFTMatrices(logSlots, logdSlots, maxDepth int, roots []complex128, pow5 []int, diffscale complex128, inverse bool) (plainVector []map[int][]complex128) {
 
 	bitreversed := false
@@ -851,13 +870,13 @@ func computeDFTMatrices(logSlots, logdSlots, maxDepth int, roots []complex128, p
 	}
 
 	// Repacking after the CoeffsToSlots (we multiply the last DFT matrix with the vector [1, 1, ..., 1, 1, 0, 0, ..., 0, 0]).
-	if logSlots != logdSlots && inverse {
-		for j := range plainVector[maxDepth-1] {
-			for x := 0; x < 1<<logSlots; x++ {
-				plainVector[maxDepth-1][j][x+(1<<logSlots)] = complex(0, 0)
-			}
-		}
-	}
+	// if logSlots != logdSlots && inverse {
+	// 	for j := range plainVector[maxDepth-1] {
+	// 		for x := 0; x < 1<<logSlots; x++ {
+	// 			plainVector[maxDepth-1][j][x+(1<<logSlots)] = complex(0, 0)
+	// 		}
+	// 	}
+	// }
 
 	// Rescaling of the DFT matrix of the SlotsToCoeffs/CoeffsToSlots
 	for j := range plainVector {
@@ -916,6 +935,10 @@ func genFFTDiagMatrix(logL, fftLevel int, a, b, c []complex128, forward, bitreve
 	addToDiagMatrix(vectors, (1<<logL)-rot, c)
 
 	return
+}
+
+func GenRepackMatrix(logL int) map[int][]complex128 {
+	return genRepackMatrix(logL, false)
 }
 
 func genRepackMatrix(logL int, bitreversed bool) (vectors map[int][]complex128) {

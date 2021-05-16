@@ -61,7 +61,8 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext) (ct0, ct1 *Ciphertext) {
 	// Part 1 : Coeffs to slots
 
 	//t = time.Now()
-	ct0, ct1 = CoeffsToSlots(ct, hbtp.pDFTInv, hbtp.ckksEvaluator)
+	// ct0, ct1 = CoeffsToSlots(ct, hbtp.pDFTInv, hbtp.ckksEvaluator)
+	ct0, ct1 = CoeffsToSlotsWithoutRepack(ct, hbtp.pDFTInvWithoutRepack, hbtp.ckksEvaluator)
 	//log.Println("After CtS    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 
 	// Part 2 : SineEval
@@ -69,12 +70,20 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext) (ct0, ct1 *Ciphertext) {
 	ct0, ct1 = hbtp.evaluateSine(ct0, ct1)
 	//log.Println("After Sine   :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 
-	// rounds to the nearest power of two
-	ct0.SetScale(math.Exp2(math.Round(math.Log2(ct0.Scale()))))
-	if ct1 != nil {
-		ct1.SetScale(math.Exp2(math.Round(math.Log2(ct1.Scale()))))
+	// Part 3 : Fix scale using diffScaleAfterEvalSine
+	hbtp.ckksEvaluator.MultByConst(ct0, hbtp.diffScaleAfterSineEval, ct0)
+	if err := hbtp.ckksEvaluator.RescaleMany(ct0, 1, ct0); err != nil {
+		panic(err)
 	}
-	//log.Println("After StC    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
+	hbtp.ckksEvaluator.MultByConst(ct1, hbtp.diffScaleAfterSineEval, ct1)
+	if err := hbtp.ckksEvaluator.RescaleMany(ct1, 1, ct1); err != nil {
+		panic(err)
+	}
+
+	// Rounds to the nearest power of two
+	ct0.SetScale(math.Exp2(math.Round(math.Log2(ct0.Scale()))))
+	ct1.SetScale(math.Exp2(math.Round(math.Log2(ct1.Scale()))))
+
 	return ct0, ct1
 }
 
@@ -133,8 +142,7 @@ func (hbtp *HalfBootstrapper) modUp(ct *Ciphertext) *Ciphertext {
 	return ct
 }
 
-/*
-func CoeffsToSlots(vec *Ciphertext, pDFTInv []*PtDiagMatrix, eval CKKSEvaluator) (ct0, ct1 *Ciphertext) {
+func CoeffsToSlotsWithoutRepack(vec *Ciphertext, pDFTInv []*PtDiagMatrix, eval CKKSEvaluator) (ct0, ct1 *Ciphertext) {
 
 	var zV, zVconj *Ciphertext
 
@@ -151,11 +159,11 @@ func CoeffsToSlots(vec *Ciphertext, pDFTInv []*PtDiagMatrix, eval CKKSEvaluator)
 	eval.DivByi(ct1, ct1)
 
 	// If repacking, then ct0 and ct1 right n/2 slots are zero.
-	if eval.(*ckksEvaluator).params.LogSlots() < eval.(*ckksEvaluator).params.LogN()-1 {
-		eval.Rotate(ct1, eval.(*ckksEvaluator).params.Slots(), ct1)
-		eval.Add(ct0, ct1, ct0)
-		return ct0, nil
-	}
+	// if eval.(*ckksEvaluator).params.LogSlots() < eval.(*ckksEvaluator).params.LogN()-1 {
+	// 	eval.Rotate(ct1, eval.(*ckksEvaluator).params.Slots(), ct1)
+	// 	eval.Add(ct0, ct1, ct0)
+	// 	return ct0, nil
+	// }
 
 	zV = nil
 	zVconj = nil
@@ -163,6 +171,7 @@ func CoeffsToSlots(vec *Ciphertext, pDFTInv []*PtDiagMatrix, eval CKKSEvaluator)
 	return ct0, ct1
 }
 
+/*
 func SlotsToCoeffs(ct0, ct1 *Ciphertext, pDFT []*PtDiagMatrix, eval CKKSEvaluator) (ct *Ciphertext) {
 
 	// If full packing, the repacking can be done directly using ct0 and ct1.
@@ -209,21 +218,6 @@ func (hbtp *HalfBootstrapper) evaluateSine(ct0, ct1 *Ciphertext) (*Ciphertext, *
 
 	// Reference scale is changed back to the current ciphertext's scale.
 	hbtp.ckksEvaluator.scale = ct0.Scale()
-
-	// Scaling using diffScaleAfterSineEval
-	hbtp.ckksEvaluator.MultByConst(ct0, hbtp.diffScaleAfterSineEval, ct0)
-	// if err := hbtp.ckksEvaluator.Rescale(ct0, hbtp.ckksEvaluator.scale, ct0); err != nil {
-	if err := hbtp.ckksEvaluator.RescaleMany(ct0, 1, ct0); err != nil {
-		panic(err)
-	}
-
-	if ct1 != nil {
-		hbtp.ckksEvaluator.MultByConst(ct1, hbtp.diffScaleAfterSineEval, ct1)
-		// if err := hbtp.ckksEvaluator.Rescale(ct1, hbtp.ckksEvaluator.scale, ct1); err != nil {
-		if err := hbtp.ckksEvaluator.RescaleMany(ct1, 1, ct1); err != nil {
-			panic(err)
-		}
-	}
 
 	return ct0, ct1
 }

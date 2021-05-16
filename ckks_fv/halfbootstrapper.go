@@ -29,24 +29,12 @@ type HalfBootstrapper struct {
 	sineEvalPoly *ChebyshevInterpolation // Coefficients of the Chebyshev Interpolation of sin(2*pi*x) or cos(2*pi*x/r)
 	arcSinePoly  *Poly                   // Coefficients of the Taylor series of arcsine(x)
 
-	coeffsToSlotsDiffScale complex128 // Matrice rescaling
-	// slotsToCoeffsDiffScale complex128 // Matrice rescaling
-	diffScaleAfterSineEval float64 // Matrice rescaling
-	// pDFT                   []*PtDiagMatrix // Matrice vectors
-	pDFTInv []*PtDiagMatrix // Matrice vectors
+	coeffsToSlotsDiffScale complex128      // Matrice rescaling
+	diffScaleAfterSineEval float64         // Matrice rescaling
+	pDFTInvWithoutRepack   []*PtDiagMatrix // Matrice vectors
 
 	rotKeyIndex []int // a list of the required rotation keys
 }
-
-/*
-func sin2pi2pi(x complex128) complex128 {
-	return cmplx.Sin(6.283185307179586*x) / 6.283185307179586
-}
-
-func cos2pi(x complex128) complex128 {
-	return cmplx.Cos(6.283185307179586 * x)
-}
-*/
 
 // NewHalfBootstrapper creates a new HalfBootstrapper.
 func NewHalfBootstrapper(params *Parameters, hbtpParams *HalfBootParameters, btpKey BootstrappingKey) (hbtp *HalfBootstrapper, err error) {
@@ -122,47 +110,6 @@ func (hbtp *HalfBootstrapper) CheckKeys() (err error) {
 	return nil
 }
 
-/*
-func AddMatrixRotToList(pVec *PtDiagMatrix, rotations []int, slots int, repack bool) []int {
-
-	if pVec.naive {
-		for j := range pVec.Vec {
-			if !utils.IsInSliceInt(j, rotations) {
-				rotations = append(rotations, j)
-			}
-		}
-	} else {
-		var index int
-		for j := range pVec.Vec {
-
-			N1 := pVec.N1
-
-			index = ((j / N1) * N1)
-
-			if repack {
-				// Sparse repacking, occurring during the first DFT matrix of the CoeffsToSlots.
-				index &= 2*slots - 1
-			} else {
-				// Other cases
-				index &= slots - 1
-			}
-
-			if index != 0 && !utils.IsInSliceInt(index, rotations) {
-				rotations = append(rotations, index)
-			}
-
-			index = j & (N1 - 1)
-
-			if index != 0 && !utils.IsInSliceInt(index, rotations) {
-				rotations = append(rotations, index)
-			}
-		}
-	}
-
-	return rotations
-}
-*/
-
 func (hbtp *HalfBootstrapper) genDFTMatrices() {
 
 	a := real(hbtp.sineEvalPoly.a)
@@ -174,14 +121,10 @@ func (hbtp *HalfBootstrapper) genDFTMatrices() {
 	hbtp.coeffsToSlotsDiffScale = complex(math.Pow(2.0/((b-a)*n*hbtp.scFac*qDiff), 1.0/float64(hbtp.CtSDepth(false))), 0)
 
 	// Rescaling factor to set the final ciphertext to the desired scale
-	// hbtp.slotsToCoeffsDiffScale = complex((qDiff*hbtp.params.scale)/hbtp.postscale, 0)
 	hbtp.diffScaleAfterSineEval = (qDiff * hbtp.params.scale) / hbtp.postscale
 
-	// CoeffsToSlots vectors
-	hbtp.pDFTInv = hbtp.HalfBootParameters.GenCoeffsToSlotsMatrix(hbtp.coeffsToSlotsDiffScale, hbtp.encoder)
-
-	// SlotsToCoeffs vectors
-	// btp.pDFT = btp.BootstrappingParameters.GenSlotsToCoeffsMatrix(btp.slotsToCoeffsDiffScale, btp.encoder)
+	// CoeffsToSlotsWithoutRepack vectors
+	hbtp.pDFTInvWithoutRepack = hbtp.HalfBootParameters.GenCoeffsToSlotsMatrixWithoutRepack(hbtp.coeffsToSlotsDiffScale, hbtp.encoder)
 
 	// List of the rotation key values to needed for the bootstrapp
 	hbtp.rotKeyIndex = []int{}
@@ -194,16 +137,9 @@ func (hbtp *HalfBootstrapper) genDFTMatrices() {
 	}
 
 	// Coeffs to Slots rotations
-	for _, pVec := range hbtp.pDFTInv {
+	for _, pVec := range hbtp.pDFTInvWithoutRepack {
 		hbtp.rotKeyIndex = AddMatrixRotToList(pVec, hbtp.rotKeyIndex, hbtp.params.Slots(), false)
 	}
-
-	// Slots to Coeffs rotations
-	/*
-		for i, pVec := range btp.pDFT {
-			btp.rotKeyIndex = AddMatrixRotToList(pVec, btp.rotKeyIndex, btp.params.Slots(), (i == 0) && (btp.params.logSlots < btp.params.MaxLogSlots()))
-		}
-	*/
 }
 
 func (hbtp *HalfBootstrapper) genSinePoly() {

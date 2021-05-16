@@ -5,22 +5,10 @@ import (
 	//"fmt"
 )
 
-// SinType is the type of function used during the bootstrapping
-// for the homomorphic modular reduction
-// type SinType uint64
-
-// Sin and Cos are the two proposed functions for SinType
-// const (
-// 	Sin  = SinType(0) // Standard Chebyshev approximation of (1/2pi) * sin(2pix)
-// 	Cos1 = SinType(1) // Special approximation (Han and Ki) of pow((1/2pi), 1/2^r) * cos(2pi(x-0.25)/2^r)
-// 	Cos2 = SinType(2) // Standard Chebyshev approximation of pow((1/2pi), 1/2^r) * cos(2pi(x-0.25)/2^r)
-// )
-
 // HalfBootParameters is a struct for the default half-boot parameters
 type HalfBootParameters struct {
 	ResidualModuli
 	KeySwitchModuli
-	// SlotsToCoeffsModuli
 	SineEvalModuli
 	CoeffsToSlotsModuli
 	LogN         int
@@ -40,7 +28,6 @@ type HalfBootParameters struct {
 
 // Params generates a new set of Parameters from the HalfBootParameters
 func (hb *HalfBootParameters) Params() (p *Parameters, err error) {
-	// Qi := append(hb.ResidualModuli, hb.SlotsToCoeffsModuli.Qi...)
 	Qi := append(hb.ResidualModuli, hb.SineEvalModuli.Qi...)
 	Qi = append(Qi, hb.CoeffsToSlotsModuli.Qi...)
 
@@ -95,46 +82,8 @@ func (hb *HalfBootParameters) Copy() *HalfBootParameters {
 	copy(paramsCopy.SineEvalModuli.Qi, hb.SineEvalModuli.Qi)
 	paramsCopy.SineEvalModuli.ScalingFactor = hb.SineEvalModuli.ScalingFactor
 
-	/*
-			// SlotsToCoeffsModuli
-			paramsCopy.SlotsToCoeffsModuli.Qi = make([]uint64, hb.StCDepth(true))
-			copy(paramsCopy.SlotsToCoeffsModuli.Qi, hb.SlotsToCoeffsModuli.Qi)
-
-		paramsCopy.SlotsToCoeffsModuli.ScalingFactor = make([][]float64, hb.StCDepth(true))
-		for i := range paramsCopy.SlotsToCoeffsModuli.ScalingFactor {
-			paramsCopy.SlotsToCoeffsModuli.ScalingFactor[i] = make([]float64, len(hb.SlotsToCoeffsModuli.ScalingFactor[i]))
-			copy(paramsCopy.SlotsToCoeffsModuli.ScalingFactor[i], hb.SlotsToCoeffsModuli.ScalingFactor[i])
-		}
-	*/
-
 	return paramsCopy
 }
-
-/*
-// ResidualModuli is a list of the moduli available after the bootstrapping.
-type ResidualModuli []uint64
-
-// KeySwitchModuli is a list of the special moduli used for the key-switching.
-type KeySwitchModuli []uint64
-
-// CoeffsToSlotsModuli is a list of the moduli used during he CoeffsToSlots step.
-type CoeffsToSlotsModuli struct {
-	Qi            []uint64
-	ScalingFactor [][]float64
-}
-
-// SineEvalModuli is a list of the moduli used during the SineEval step.
-type SineEvalModuli struct {
-	Qi            []uint64
-	ScalingFactor float64
-}
-
-// SlotsToCoeffsModuli is a list of the moduli used during the SlotsToCoeffs step.
-type SlotsToCoeffsModuli struct {
-	Qi            []uint64
-	ScalingFactor [][]float64
-}
-*/
 
 // MaxLevel returns the maximum level of the halfboot parameters
 func (hb *HalfBootParameters) MaxLevel() int {
@@ -187,41 +136,10 @@ func (hb *HalfBootParameters) CtSLevels() (ctsLevel []int) {
 	return
 }
 
-/*
-// StCDepth returns the number of levels allocated to SlotToCoeffs.
-// If actual == true then returns the number of moduli consumed, else
-// returns the factorization depth.
-func (b *HalfBootParameters) StCDepth(actual bool) (depth int) {
-	if actual {
-		depth = len(b.SlotsToCoeffsModuli.ScalingFactor)
-	} else {
-		for i := range b.SlotsToCoeffsModuli.ScalingFactor {
-			for range b.SlotsToCoeffsModuli.ScalingFactor[i] {
-				depth++
-			}
-		}
-	}
-
-	return
-}
-
-// StCLevels returns the index of the Qi used in SlotsToCoeffs
-func (b *HalfBootParameters) StCLevels() (stcLevel []int) {
-	stcLevel = []int{}
-	for i := range b.SlotsToCoeffsModuli.Qi {
-		for range b.SlotsToCoeffsModuli.ScalingFactor[b.StCDepth(true)-1-i] {
-			stcLevel = append(stcLevel, b.MaxLevel()-b.CtSDepth(true)-b.SineEvalDepth(true)-b.ArcSineDepth()-i)
-		}
-	}
-
-	return
-}
-*/
-
-// GenCoeffsToSlotsMatrix generates the factorized encoding matrix
-// scaling : constant by witch the all the matrices will be multuplied by
+// GenCoeffsToSlotsMatrixWithoutRepack generates the factorized encoding matrix
+// scaling : constant by witch the all the matrices will be multiplied by
 // encoder : ckks.Encoder
-func (hb *HalfBootParameters) GenCoeffsToSlotsMatrix(scaling complex128, encoder Encoder) []*PtDiagMatrix {
+func (hb *HalfBootParameters) GenCoeffsToSlotsMatrixWithoutRepack(scaling complex128, encoder Encoder) []*PtDiagMatrix {
 
 	logSlots := hb.LogSlots
 	slots := 1 << logSlots
@@ -243,7 +161,7 @@ func (hb *HalfBootParameters) GenCoeffsToSlotsMatrix(scaling complex128, encoder
 
 	// CoeffsToSlots vectors
 	pDFTInv := make([]*PtDiagMatrix, len(ctsLevels))
-	pVecDFTInv := computeDFTMatrices(logSlots, logdSlots, depth, roots, pow5, scaling, true)
+	pVecDFTInv := computeDFTMatricesWithoutRepack(logSlots, logdSlots, depth, roots, pow5, scaling, true)
 	cnt := 0
 	for i := range hb.CoeffsToSlotsModuli.ScalingFactor {
 		for j := range hb.CoeffsToSlotsModuli.ScalingFactor[hb.CtSDepth(true)-i-1] {
@@ -255,44 +173,69 @@ func (hb *HalfBootParameters) GenCoeffsToSlotsMatrix(scaling complex128, encoder
 	return pDFTInv
 }
 
-/*
-// GenSlotsToCoeffsMatrix generates the factorized decoding matrix
-// scaling : constant by witch the all the matrices will be multuplied by
-// encoder : ckks.Encoder
-func (b *HalfBootParameters) GenSlotsToCoeffsMatrix(scaling complex128, encoder Encoder) []*PtDiagMatrix {
+func computeDFTMatricesWithoutRepack(logSlots, logdSlots, maxDepth int, roots []complex128, pow5 []int, diffscale complex128, inverse bool) (plainVector []map[int][]complex128) {
 
-	logSlots := b.LogSlots
-	slots := 1 << logSlots
-	depth := b.StCDepth(false)
-	logdSlots := logSlots + 1
-	if logdSlots == b.LogN {
-		logdSlots--
+	bitreversed := false
+
+	var fftLevel, depth, nextfftLevel int
+
+	fftLevel = logSlots
+
+	var a, b, c [][]complex128
+
+	if inverse {
+		a, b, c = fftInvPlainVec(logSlots, 1<<logdSlots, roots, pow5)
+	} else {
+		a, b, c = fftPlainVec(logSlots, 1<<logdSlots, roots, pow5)
 	}
 
-	roots := computeRoots(slots << 1)
-	pow5 := make([]int, (slots<<1)+1)
-	pow5[0] = 1
-	for i := 1; i < (slots<<1)+1; i++ {
-		pow5[i] = pow5[i-1] * 5
-		pow5[i] &= (slots << 2) - 1
+	plainVector = make([]map[int][]complex128, maxDepth)
+
+	// We compute the chain of merge in order or reverse order depending if its DFT or InvDFT because
+	// the way the levels are collapsed has an inpact on the total number of rotations and keys to be
+	// stored. Ex. instead of using 255 + 64 plaintext vectors, we can use 127 + 128 plaintext vectors
+	// by reversing the order of the merging.
+	merge := make([]int, maxDepth)
+	for i := 0; i < maxDepth; i++ {
+
+		depth = int(math.Ceil(float64(fftLevel) / float64(maxDepth-i)))
+
+		if inverse {
+			merge[i] = depth
+		} else {
+			merge[len(merge)-i-1] = depth
+
+		}
+
+		fftLevel -= depth
 	}
 
-	stcLevels := b.StCLevels()
+	fftLevel = logSlots
+	for i := 0; i < maxDepth; i++ {
+		// First layer of the i-th level of the DFT
+		plainVector[i] = genFFTDiagMatrix(logSlots, fftLevel, a[logSlots-fftLevel], b[logSlots-fftLevel], c[logSlots-fftLevel], inverse, bitreversed)
 
-	// CoeffsToSlots vectors
-	pDFT := make([]*PtDiagMatrix, len(stcLevels))
-	pVecDFT := computeDFTMatrices(logSlots, logdSlots, depth, roots, pow5, scaling, false)
-	cnt := 0
-	for i := range b.SlotsToCoeffsModuli.ScalingFactor {
-		for j := range b.SlotsToCoeffsModuli.ScalingFactor[b.StCDepth(true)-i-1] {
-			pDFT[cnt] = encoder.EncodeDiagMatrixAtLvl(stcLevels[cnt], pVecDFT[cnt], b.SlotsToCoeffsModuli.ScalingFactor[b.StCDepth(true)-i-1][j], b.MaxN1N2Ratio, logdSlots)
-			cnt++
+		// Merges the layer with the next levels of the DFT if the total depth requires it.
+		nextfftLevel = fftLevel - 1
+		for j := 0; j < merge[i]-1; j++ {
+			plainVector[i] = multiplyFFTMatrixWithNextFFTLevel(plainVector[i], logSlots, 1<<logSlots, nextfftLevel, a[logSlots-nextfftLevel], b[logSlots-nextfftLevel], c[logSlots-nextfftLevel], inverse, bitreversed)
+			nextfftLevel--
+		}
+
+		fftLevel -= merge[i]
+	}
+
+	// Rescaling of the DFT matrix of the SlotsToCoeffs/CoeffsToSlots
+	for j := range plainVector {
+		for x := range plainVector[j] {
+			for i := range plainVector[j][x] {
+				plainVector[j][x][i] *= diffscale
+			}
 		}
 	}
 
-	return pDFT
+	return
 }
-*/
 
 func (hb *HalfBootParameters) SetLogSlots(logslot int) {
 	hb.LogSlots = logslot
