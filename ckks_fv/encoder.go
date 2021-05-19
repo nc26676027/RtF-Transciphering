@@ -48,6 +48,7 @@ type Encoder interface {
 	EncodeComplexNTTNew(values []complex128, logSlots int) (plaintext *Plaintext)
 	EncodeComplexNTTAtLvlNew(level int, values []complex128, logSlots int) (plaintext *Plaintext)
 
+	EncodeDiagMatrixT(vector map[int][]uint64, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
 	EncodeDiagMatrixAtLvl(level int, vector map[int][]complex128, scale, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrix)
 
 	EncodeComplexRingT(ptRt *PlaintextRingT, values []complex128, logSlots int)
@@ -112,6 +113,7 @@ type encoder struct {
 	indexMatrix []uint64
 	scaler      ring.Scaler
 	deltaMont   []uint64
+	deltaMontP  []uint64
 
 	tmpPoly *ring.Poly
 	tmpPtRt *PlaintextRingT
@@ -135,10 +137,12 @@ func newEncoder(params *Parameters) encoder {
 	}
 
 	var p *ring.Ring
+	var deltaMontP []uint64
 	if params.PiCount() != 0 {
 		if p, err = ring.NewRing(params.N(), params.pi); err != nil {
 			panic(err)
 		}
+		deltaMontP = GenLiftParams(p, params.t)
 	}
 
 	var ringT *ring.Ring
@@ -193,6 +197,7 @@ func newEncoder(params *Parameters) encoder {
 		indexMatrix:     indexMatrix,
 		scaler:          ring.NewRNSScaler(params.t, q),
 		deltaMont:       GenLiftParams(q, params.t),
+		deltaMontP:      deltaMontP,
 		tmpPoly:         ringT.NewPoly(),
 		tmpPtRt:         NewPlaintextRingT(params),
 	}
@@ -680,6 +685,13 @@ func polyToFloatNoCRT(coeffs []uint64, values []float64, scale float64, Q uint64
 	}
 }
 
+type PtDiagMatrixT struct {
+	LogSlots int
+	N1       int
+	Vec      map[int][2]*ring.Poly
+	naive    bool
+}
+
 // PtDiagMatrix is a struct storing a plaintext diagonalized matrix
 // ready to be evaluated on a ciphertext using evaluator.MultiplyByDiagMatrice.
 type PtDiagMatrix struct {
@@ -697,6 +709,21 @@ func bsgsIndex(el interface{}, slots, N1 int) (index map[int][]int, rotations []
 	rotations = []int{}
 	switch element := el.(type) {
 	case map[int][]complex128:
+		for key := range element {
+			key &= (slots - 1)
+			idx1 := key / N1
+			idx2 := key & (N1 - 1)
+			if index[idx1] == nil {
+				index[idx1] = []int{idx2}
+			} else {
+				index[idx1] = append(index[idx1], idx2)
+			}
+
+			if !utils.IsInSliceInt(idx2, rotations) {
+				rotations = append(rotations, idx2)
+			}
+		}
+	case map[int][]uint64:
 		for key := range element {
 			key &= (slots - 1)
 			idx1 := key / N1
@@ -741,6 +768,104 @@ func bsgsIndex(el interface{}, slots, N1 int) (index map[int][]int, rotations []
 		}
 	}
 	return
+}
+
+func (encoder *encoderComplex128) EncodeDiagMatrixT(diagMatrix map[int][]uint64, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT) {
+	matrix = new(PtDiagMatrixT)
+	matrix.LogSlots = logSlots
+	slots := 1 << logSlots
+
+	if len(diagMatrix) > 2 {
+		// N1*N2 = N
+		N1 := findbestbabygiantstepsplit(diagMatrix, slots, maxM1N2Ratio)
+		matrix.N1 = N1
+
+		index, _ := bsgsIndex(diagMatrix, slots, N1)
+
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for j := range index {
+			for _, i := range index[j] {
+				// manages inputs that have rotation between 0 and slots-1 or between -slots/2 and slots/2-1
+				v := diagMatrix[N1*j+i]
+				if len(v) == 0 {
+					v = diagMatrix[(N1*j+i)-slots]
+				}
+
+				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(logSlots, rotateT(v, -N1*j))
+			}
+		}
+	} else {
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for i := range diagMatrix {
+			idx := i
+			if idx < 0 {
+				idx += slots
+			}
+			matrix.Vec[idx] = encoder.encodeDiagonalT(logSlots, diagMatrix[i])
+		}
+
+		matrix.naive = true
+	}
+
+	return
+}
+
+func (encoder *encoderComplex128) encodeDiagonalT(logSlots int, m []uint64) [2]*ring.Poly {
+	ringQ := encoder.ringQ
+	ringP := encoder.ringP
+	ringT := encoder.ringT
+
+	// EncodeUintRingT
+	mT := ringT.NewPoly()
+	for i := 0; i < len(m); i++ {
+		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i]
+	}
+	for i := len(m); i < len(encoder.indexMatrix); i++ {
+		mT.Coeffs[0][encoder.indexMatrix[i]] = 0
+	}
+	ringT.InvNTT(mT, mT)
+
+	// RingTToMulRingQ
+	mQ := ringQ.NewPoly()
+	for i := 0; i < len(encoder.ringQ.Modulus); i++ {
+		copy(mQ.Coeffs[i], mT.Coeffs[0])
+	}
+	ringQ.NTTLazy(mQ, mQ)
+	ringQ.MForm(mQ, mQ)
+
+	// RingTToMulRingP
+	mP := ringP.NewPoly()
+	for i := 0; i < len(encoder.ringP.Modulus); i++ {
+		copy(mP.Coeffs[i], mT.Coeffs[0])
+	}
+	ringP.NTTLazy(mP, mP)
+	ringP.MForm(mP, mP)
+
+	return [2]*ring.Poly{mQ, mP}
+}
+
+func (encoder *encoderComplex128) encodeDiagonal(logSlots, level int, scale float64, m []complex128) [2]*ring.Poly {
+
+	ringQ := encoder.ringQ
+	ringP := encoder.ringP
+
+	encoder.EmbedComplex(m, logSlots)
+
+	mQ := ringQ.NewPolyLvl(level + 1)
+	encoder.CKKSScaleUp(mQ, scale, ringQ.Modulus[:level+1])
+	ringQ.NTTLvl(level, mQ, mQ)
+	ringQ.MFormLvl(level, mQ, mQ)
+
+	mP := ringP.NewPoly()
+	encoder.CKKSScaleUp(mP, scale, ringP.Modulus)
+	ringP.NTT(mP, mP)
+	ringP.MForm(mP, mP)
+
+	encoder.WipeInternalMemory()
+
+	return [2]*ring.Poly{mQ, mP}
 }
 
 // EncodeDiagMatrixAtLvl encodes a diagonalized plaintext matrix into PtDiagMatrix struct.
@@ -799,28 +924,6 @@ func (encoder *encoderComplex128) EncodeDiagMatrixAtLvl(level int, diagMatrix ma
 	}
 
 	return
-}
-
-func (encoder *encoderComplex128) encodeDiagonal(logSlots, level int, scale float64, m []complex128) [2]*ring.Poly {
-
-	ringQ := encoder.ringQ
-	ringP := encoder.ringP
-
-	encoder.EmbedComplex(m, logSlots)
-
-	mQ := ringQ.NewPolyLvl(level + 1)
-	encoder.CKKSScaleUp(mQ, scale, ringQ.Modulus[:level+1])
-	ringQ.NTTLvl(level, mQ, mQ)
-	ringQ.MFormLvl(level, mQ, mQ)
-
-	mP := ringP.NewPoly()
-	encoder.CKKSScaleUp(mP, scale, ringP.Modulus)
-	ringP.NTT(mP, mP)
-	ringP.MForm(mP, mP)
-
-	encoder.WipeInternalMemory()
-
-	return [2]*ring.Poly{mQ, mP}
 }
 
 // Finds the best N1*N2 = N for the baby-step giant-step algorithm for matrix multiplication.

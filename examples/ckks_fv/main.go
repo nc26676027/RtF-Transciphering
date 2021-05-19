@@ -360,17 +360,181 @@ func RtF() {
 	}
 }
 
+func fvLT() {
+	var params *ckks_fv.Parameters
+	params = ckks_fv.DefaultParams[10] // params.N == params.Slots
+	// params = ckks_fv.DefaultParams[11] // params.N > params.Slots // TODO: fix rotation problem
+	slots := params.Slots()
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewFVDecryptor(params, sk)
+	encoder := ckks_fv.NewEncoder(params)
+
+	rotations := []int{1, 2, 3}
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	evaluator := ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys})
+
+	data := make([]uint64, slots)
+	for i := range data {
+		data[i] = uint64(i)
+	}
+
+	plaintext := ckks_fv.NewPlaintextFV(params)
+	encoder.EncodeUint(data, plaintext)
+	ciphertext := encryptor.EncryptNew(plaintext)
+
+	mat := make([]map[int][]uint64, 1)
+	mat[0] = make(map[int][]uint64)
+	// /*
+	mat[0][0] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		// mat[0][0][i] = uint64(i)
+		mat[0][0][i] = 1
+	}
+	// */
+	mat[0][1] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		// mat[0][1][i] = uint64(i)
+		mat[0][1][i] = uint64(i)
+	}
+	// /*
+	mat[0][2] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		// mat[0][2][i] = uint64(i)
+		mat[0][2][i] = 2
+	}
+	// */
+	// /*
+	mat[0][3] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		mat[0][3][i] = 2
+	}
+	// */
+
+	ptDiagMatrixT := encoder.EncodeDiagMatrixT(mat[0], 16.0, params.LogSlots())
+	// fmt.Printf("ptDiagMatrixT.N1: %d\n", ptDiagMatrixT.N1)
+
+	res := evaluator.LinearTransform(ciphertext, ptDiagMatrixT)[0]
+	decrypted := decryptor.DecryptNew(res)
+	decoded := encoder.DecodeUintNew(decrypted)
+
+	fmt.Println()
+	fmt.Printf("Matrix multiplication in Zt for t = %d:\n", params.T())
+	if params.Slots() < params.N() {
+		A := make([][]uint64, slots)
+		for i := 0; i < slots; i++ {
+			A[i] = make([]uint64, slots)
+		}
+
+		for k := range mat[0] {
+			for i := 0; i < slots; i++ {
+				A[i][(i+k)%slots] = mat[0][k][i]
+			}
+		}
+
+		for i := 0; i < slots; i++ {
+			fmt.Printf("[ ")
+			for j := 0; j < slots; j++ {
+				fmt.Printf("%3d ", A[i][j])
+			}
+			fmt.Printf("]")
+			if i == slots/2 {
+				fmt.Printf("   |/  ")
+			} else if i == slots/2+1 {
+				fmt.Printf("  /|   ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]", data[i])
+
+			if i == slots/2 || i == slots/2+1 {
+				fmt.Printf("  ---  ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]\n", decoded[i])
+		}
+	} else {
+		l := slots / 2
+		A := make([][]uint64, l)
+		B := make([][]uint64, l)
+		for i := 0; i < l; i++ {
+			A[i] = make([]uint64, l)
+			B[i] = make([]uint64, l)
+		}
+
+		for k := range mat[0] {
+			for i := 0; i < l; i++ {
+				A[i][(i+k)%l] = mat[0][k][i]
+			}
+			for i := l; i < slots; i++ {
+				B[i-l][(i+k)%l] = mat[0][k][i]
+			}
+		}
+
+		for i := 0; i < l; i++ {
+			fmt.Printf("[ ")
+			for j := 0; j < l; j++ {
+				fmt.Printf("%3d ", A[i][j])
+			}
+			fmt.Printf("]")
+			if i == l/2 {
+				fmt.Printf("   |/  ")
+			} else if i == l/2+1 {
+				fmt.Printf("  /|   ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]", data[i])
+
+			if i == l/2 || i == l/2+1 {
+				fmt.Printf("  ---  ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]\n", decoded[i])
+		}
+		fmt.Println()
+
+		for i := 0; i < l; i++ {
+			fmt.Printf("[ ")
+			for j := 0; j < l; j++ {
+				fmt.Printf("%3d ", B[i][j])
+			}
+			fmt.Printf("]")
+			if i == l/2 {
+				fmt.Printf("   |/  ")
+			} else if i == l/2+1 {
+				fmt.Printf("  /|   ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]", data[i+l])
+
+			if i == l/2 || i == l/2+1 {
+				fmt.Printf("  ---  ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]\n", decoded[i+l])
+		}
+	}
+}
+
 func main() {
 	var input string
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2, 3.\n"
+	choice := "Choose one of 0, 1, 2, 3, 4.\n"
 	for true {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): Transciphering")
 		fmt.Println("  (2): Transciphering with Bootstrapping")
 		fmt.Println("  (3): RtF Framework")
+		fmt.Println("  (4): FV Linear Transform")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -388,6 +552,9 @@ func main() {
 			case 3:
 				fmt.Println()
 				RtF()
+			case 4:
+				fmt.Println()
+				fvLT()
 			default:
 				fmt.Println(choice)
 			}
