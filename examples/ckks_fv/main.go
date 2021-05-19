@@ -181,6 +181,7 @@ func RtF() {
 	var ckksDecryptor ckks_fv.CKKSDecryptor
 	var fvEvaluator ckks_fv.FVEvaluator
 	var ckksEvaluator ckks_fv.CKKSEvaluator
+	var plainCKKSRingT *ckks_fv.PlaintextRingT
 	var plaintext *ckks_fv.Plaintext
 
 	// Half-Bootstrapping parameters
@@ -190,11 +191,17 @@ func RtF() {
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.DefaultHalfBootParams[3]
+	hbtpParams := ckks_fv.DefaultHalfBootParams[2]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
 	}
+
+	fvParams := ckks_fv.DefaultParams[9]
+	if params.Qi()[0] != fvParams.Qi()[0] {
+		panic("Q0 does not match")
+	}
+	fvParams.SetT(params.T())
 
 	fmt.Println()
 	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), hbtpParams.H, params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
@@ -222,30 +229,85 @@ func RtF() {
 	fvEvaluator = ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{})
 	ckksEvaluator = ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
 
-	// Encode random floats to plaintext coefficients
+	// Encode float data added by keystream to plaintext coefficients
 	fmt.Println()
 	fmt.Println("Encode random numbers on coefficients...")
-	randomCoeffs := make([]float64, params.N())
+	var data []float64
+	var keystream []uint64
+	coeffs := make([]float64, params.N())
 
 	fullCoeffs := false
 	fullCoeffs = fullCoeffs && (params.LogN() == params.LogSlots()+1)
 	if fullCoeffs {
+		data = make([]float64, params.N())
+		keystream = make([]uint64, params.N())
+		for i := 0; i < params.N(); i++ {
+			data[i] = utils.RandFloat64(-1, 1)
+			keystream[i] = utils.RandUint64() % params.T()
+		}
+
 		for i := 0; i < params.N()/2; i++ {
 			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
-			randomCoeffs[j] = utils.RandFloat64(-1, 1)
-			randomCoeffs[uint64(params.N()/2)+j] = utils.RandFloat64(-1, 1)
+			coeffs[j] = data[i]
+			coeffs[uint64(params.N()/2)+j] = data[i+params.N()/2]
+		}
+
+		plainCKKSRingT = encoder.EncodeCoeffsRingTNew(coeffs, float64(params.T()/(1<<11)))
+		poly := plainCKKSRingT.Value()[0]
+		for i := 0; i < params.N()/2; i++ {
+			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i]) % params.T()
+			j = j + uint64(params.N()/2)
+			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i+params.N()/2]) % params.T()
+		}
+	} else {
+		data = make([]float64, params.Slots())
+		keystream = make([]uint64, params.Slots())
+		for i := 0; i < params.Slots(); i++ {
+			data[i] = utils.RandFloat64(-1, 1)
+			keystream[i] = utils.RandUint64() % params.T()
+		}
+
+		for i := 0; i < params.Slots(); i++ {
+			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+			coeffs[j] = data[i]
+		}
+
+		plainCKKSRingT = encoder.EncodeCoeffsRingTNew(coeffs, float64(params.T()/(1<<11)))
+		poly := plainCKKSRingT.Value()[0]
+		for i := 0; i < params.Slots(); i++ {
+			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i]) % params.T()
+		}
+	}
+
+	// plainCKKSRingT := encoder.EncodeCoeffsRingTNew(coeffs, float64(params.T())/(1<<11))
+	plaintext = ckks_fv.NewPlaintextFV(params)
+	encoder.FVScaleUp(plainCKKSRingT, plaintext)
+
+	fmt.Println("Done")
+
+	// FV Keystream
+	fmt.Println()
+	fmt.Println("Evaluate FV keystream")
+	pKeystream := ckks_fv.NewPlaintextFV(fvParams)
+	pKeystreamRingT := ckks_fv.NewPlaintextRingT(fvParams)
+	if fullCoeffs {
+		for i := 0; i < params.N()/2; i++ {
+			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+			pKeystreamRingT.Value()[0].Coeffs[0][j] = keystream[i]
+			pKeystreamRingT.Value()[0].Coeffs[0][j+uint64(params.N()/2)] = keystream[i+params.N()/2]
 		}
 	} else {
 		for i := 0; i < params.Slots(); i++ {
 			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
-			randomCoeffs[j] = utils.RandFloat64(-1, 1)
+			pKeystreamRingT.Value()[0].Coeffs[0][j] = keystream[i]
 		}
 	}
-
-	plainCKKSRingT := encoder.EncodeCoeffsRingTNew(randomCoeffs, float64(params.T())/(1<<11))
-	plaintext = ckks_fv.NewPlaintextFV(params)
-	encoder.FVScaleUp(plainCKKSRingT, plaintext)
-
+	encoder.FVScaleUp(pKeystreamRingT, pKeystream)
+	fvKeystream := fvEncryptor.EncryptNew(pKeystream)
+	fvEvaluator.TransformToNTT(fvKeystream, fvKeystream)
+	ckksEvaluator.RescaleMany(fvKeystream, fvKeystream.Level(), fvKeystream)
 	fmt.Println("Done")
 
 	// Encrypt and rescale to the lowest level
@@ -254,6 +316,7 @@ func RtF() {
 	ciphertext := fvEncryptor.EncryptNew(plaintext)
 	fvEvaluator.TransformToNTT(ciphertext, ciphertext)
 	ckksEvaluator.RescaleMany(ciphertext, ciphertext.Level(), ciphertext)
+	ckksEvaluator.Sub(ciphertext, fvKeystream, ciphertext)
 	ciphertext.SetScale(float64(params.Qi()[0]) / (1 << 11))
 	fmt.Println("Done")
 
@@ -273,9 +336,8 @@ func RtF() {
 		valuesWant0 := make([]complex128, params.Slots())
 		valuesWant1 := make([]complex128, params.Slots())
 		for i := 0; i < params.Slots(); i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogSlots()))
-			valuesWant0[i] = complex(randomCoeffs[j], 0)
-			valuesWant1[i] = complex(randomCoeffs[j+uint64(params.Slots())], 0)
+			valuesWant0[i] = complex(data[i], 0)
+			valuesWant1[i] = complex(data[i+params.N()/2], 0)
 		}
 
 		fmt.Println()
@@ -289,8 +351,7 @@ func RtF() {
 
 		valuesWant := make([]complex128, params.Slots())
 		for i := 0; i < params.Slots(); i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
-			valuesWant[i] = complex(randomCoeffs[j], 0)
+			valuesWant[i] = complex(data[i], 0)
 		}
 
 		fmt.Println()
