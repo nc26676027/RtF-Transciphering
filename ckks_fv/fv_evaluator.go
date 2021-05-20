@@ -44,6 +44,7 @@ type FVEvaluator interface {
 	WithKey(EvaluationKey) FVEvaluator
 
 	// Linear Transformations
+	SlotsToCoeffs(ct *Ciphertext) *Ciphertext
 	LinearTransform(vec *Ciphertext, linearTransform interface{}) (res []*Ciphertext)
 	MultiplyByDiabMatrix(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
 	MultiplyByDiabMatrixNaive(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
@@ -56,6 +57,7 @@ type fvEvaluator struct {
 	*fvEvaluatorBase
 	*fvEvaluatorBuffers
 
+	pDcd            []*PtDiagMatrixT
 	rlk             *RelinearizationKey
 	rtks            *RotationKeySet
 	permuteNTTIndex map[uint64][]uint64
@@ -182,6 +184,8 @@ func NewFVEvaluator(params *Parameters, evaluationKey EvaluationKey) FVEvaluator
 	if ev.rtks != nil {
 		ev.permuteNTTIndex = *ev.permuteNTTIndexesForKeys(ev.rtks)
 	}
+
+	ev.pDcd = params.GenSlotToCoeffMatFV(NewEncoder(params))
 	return ev
 }
 
@@ -220,6 +224,7 @@ func (eval *fvEvaluator) ShallowCopy() FVEvaluator {
 		fvEvaluatorBuffers: newEvaluatorBuffer(eval.fvEvaluatorBase),
 		baseconverterQ1Q2:  eval.baseconverterQ1Q2.ShallowCopy(),
 		baseconverterQ1P:   eval.baseconverterQ1P.ShallowCopy(),
+		pDcd:               eval.pDcd,
 		rlk:                eval.rlk,
 		rtks:               eval.rtks,
 	}
@@ -1014,7 +1019,7 @@ func (eval *fvEvaluator) permuteNTTHoistedNoModDown(c2QiQDecomp, c2QiPDecomp []*
 
 	rtk, generated := eval.rtks.Keys[galEl]
 	if !generated {
-		fmt.Println(k)
+		// fmt.Printf("Rot ind : %d\n", k)
 		panic("switching key not available")
 	}
 	index := eval.permuteNTTIndex[galEl]

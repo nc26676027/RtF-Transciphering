@@ -207,6 +207,36 @@ var DefaultParams = []*Parameters{
 		t:     0x7fea0001,
 		sigma: DefaultSigma,
 	},
+
+	// Test parameter for fvStC() in examples/ckks_fv/main.go
+	{logN: 4,
+		logSlots: 3,
+		qi: []uint64{0x80000000080001, 0x2000000a0001, 0x2000000e0001, 0x1fffffc20001, 0x200000440001,
+			0x200000500001, 0x200000620001, 0x1fffff980001, 0x2000006a0001, 0x1fffff7e0001,
+			0x200000860001, 0x200000a60001, 0x200000aa0001, 0x200000b20001, 0x200000c80001,
+			0x1fffff360001, 0x200000e20001, 0x1fffff060001, 0x200000fe0001, 0x1ffffede0001,
+			0x1ffffeca0001, 0x1ffffeb40001, 0x200001520001, 0x1ffffe760001, 0x2000019a0001,
+			0x1ffffe640001, 0x200001a00001, 0x1ffffe520001, 0x200001e80001, 0x1ffffe0c0001,
+			0x1ffffdee0001, 0x200002480001}, // 55 + 31 x 45
+		pi:    []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
+		t:     65537,
+		sigma: DefaultSigma,
+	},
+
+	// Test parameter for fvStC() with full batching in examples/ckks_fv/main.go
+	{logN: 4,
+		logSlots: 4,
+		qi: []uint64{0x80000000080001, 0x2000000a0001, 0x2000000e0001, 0x1fffffc20001, 0x200000440001,
+			0x200000500001, 0x200000620001, 0x1fffff980001, 0x2000006a0001, 0x1fffff7e0001,
+			0x200000860001, 0x200000a60001, 0x200000aa0001, 0x200000b20001, 0x200000c80001,
+			0x1fffff360001, 0x200000e20001, 0x1fffff060001, 0x200000fe0001, 0x1ffffede0001,
+			0x1ffffeca0001, 0x1ffffeb40001, 0x200001520001, 0x1ffffe760001, 0x2000019a0001,
+			0x1ffffe640001, 0x200001a00001, 0x1ffffe520001, 0x200001e80001, 0x1ffffe0c0001,
+			0x1ffffdee0001, 0x200002480001}, // 55 + 31 x 45
+		pi:    []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
+		t:     65537,
+		sigma: DefaultSigma,
+	},
 }
 
 // Moduli stores the NTT primes of the RNS representation.

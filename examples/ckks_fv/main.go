@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/ldsec/lattigo/v2/ckks_fv"
+	"github.com/ldsec/lattigo/v2/ring"
 	"github.com/ldsec/lattigo/v2/utils"
 )
 
@@ -513,6 +514,67 @@ func fvLT() {
 	}
 }
 
+func fvStC() {
+	var params *ckks_fv.Parameters
+	// params = ckks_fv.DefaultParams[12]
+	params = ckks_fv.DefaultParams[13] // full batching
+	slots := params.Slots()
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewFVDecryptor(params, sk)
+	encoder := ckks_fv.NewEncoder(params)
+
+	rotations := []int{0, 1, 2, 3, 4, 12, 6, 8, 15}
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	evaluator := ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys})
+
+	var plaintext, decrypted *ckks_fv.Plaintext
+	var ciphertext, res *ckks_fv.Ciphertext
+	var decoded []uint64
+
+	g := ring.PrimitiveRoot(params.T())
+	w := ring.ModExp(g, (int(params.T())-1)/(slots*2), params.T())
+
+	A := make([][]uint64, slots)
+	M := slots * 2
+	for i := range A {
+		A[i] = make([]uint64, slots)
+		for j := range A[i] {
+			if i < slots/2 {
+				A[i][j] = ring.ModExp(uint64(5), i, uint64(M)) * uint64(j) % uint64(M)
+			} else {
+				A[i][j] = (-ring.ModExp(uint64(5), i-slots/2, uint64(M)) * uint64(j)) % uint64(M)
+			}
+		}
+	}
+
+	for j := 0; j < slots; j++ {
+		fmt.Printf("[")
+		for i := 0; i < slots; i++ {
+			fmt.Printf("%5v ", ring.ModExp(w, int(A[i][utils.BitReverse64(uint64(j), uint64(params.LogSlots()))]), params.T()))
+		}
+		fmt.Println("]")
+	}
+	fmt.Println()
+	fmt.Println()
+
+	for i := 0; i < slots; i++ {
+		data := make([]uint64, slots)
+		data[i] = 1
+
+		plaintext = ckks_fv.NewPlaintextFV(params)
+		encoder.EncodeUint(data, plaintext)
+		ciphertext = encryptor.EncryptNew(plaintext)
+
+		res = evaluator.SlotsToCoeffs(ciphertext)
+		decrypted = decryptor.DecryptNew(res)
+		decoded = encoder.DecodeUintNew(decrypted)
+		fmt.Printf("%5v\n", decoded[:slots])
+	}
+}
+
 func main() {
 	var input string
 	var index int
@@ -525,6 +587,7 @@ func main() {
 		fmt.Println("  (2): Transciphering with Bootstrapping")
 		fmt.Println("  (3): RtF Framework")
 		fmt.Println("  (4): FV Linear Transform")
+		fmt.Println("  (5): FV SlotsToCoeff")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -545,6 +608,9 @@ func main() {
 			case 4:
 				fmt.Println()
 				fvLT()
+			case 5:
+				fmt.Println()
+				fvStC()
 			default:
 				fmt.Println(choice)
 			}
