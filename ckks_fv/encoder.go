@@ -257,7 +257,7 @@ func (encoder *encoder) EncodeUintRingT(coeffs []uint64, p *PlaintextRingT) {
 	}
 
 	for i := len(coeffs); i < len(encoder.indexMatrix); i++ {
-		p.value.Coeffs[0][encoder.indexMatrix[i]] = 0
+		p.value.Coeffs[0][encoder.indexMatrix[i]] = coeffs[i%len(coeffs)]
 	}
 
 	encoder.ringT.InvNTT(p.value, p.value)
@@ -823,7 +823,7 @@ func (encoder *encoderComplex128) encodeDiagonalT(logSlots int, m []uint64) [2]*
 		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i]
 	}
 	for i := len(m); i < len(encoder.indexMatrix); i++ {
-		mT.Coeffs[0][encoder.indexMatrix[i]] = 0
+		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i%len(m)]
 	}
 	ringT.InvNTT(mT, mT)
 

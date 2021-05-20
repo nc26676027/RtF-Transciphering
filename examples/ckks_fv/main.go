@@ -362,8 +362,8 @@ func RtF() {
 
 func fvLT() {
 	var params *ckks_fv.Parameters
-	params = ckks_fv.DefaultParams[10] // params.N == params.Slots
-	// params = ckks_fv.DefaultParams[11] // params.N > params.Slots // TODO: fix rotation problem
+	// params = ckks_fv.DefaultParams[10] // params.N == params.Slots
+	params = ckks_fv.DefaultParams[11] // params.N > params.Slots
 	slots := params.Slots()
 
 	kgen := ckks_fv.NewKeyGenerator(params)
@@ -387,31 +387,22 @@ func fvLT() {
 
 	mat := make([]map[int][]uint64, 1)
 	mat[0] = make(map[int][]uint64)
-	// /*
 	mat[0][0] = make([]uint64, slots)
 	for i := 0; i < slots; i++ {
-		// mat[0][0][i] = uint64(i)
 		mat[0][0][i] = 1
 	}
-	// */
 	mat[0][1] = make([]uint64, slots)
 	for i := 0; i < slots; i++ {
-		// mat[0][1][i] = uint64(i)
 		mat[0][1][i] = uint64(i)
 	}
-	// /*
 	mat[0][2] = make([]uint64, slots)
 	for i := 0; i < slots; i++ {
-		// mat[0][2][i] = uint64(i)
-		mat[0][2][i] = 2
+		mat[0][2][i] = 0
 	}
-	// */
-	// /*
 	mat[0][3] = make([]uint64, slots)
 	for i := 0; i < slots; i++ {
 		mat[0][3][i] = 2
 	}
-	// */
 
 	ptDiagMatrixT := encoder.EncodeDiagMatrixT(mat[0], 16.0, params.LogSlots())
 	// fmt.Printf("ptDiagMatrixT.N1: %d\n", ptDiagMatrixT.N1)
@@ -420,7 +411,6 @@ func fvLT() {
 	decrypted := decryptor.DecryptNew(res)
 	decoded := encoder.DecodeUintNew(decrypted)
 
-	fmt.Println()
 	fmt.Printf("Matrix multiplication in Zt for t = %d:\n", params.T())
 	if params.Slots() < params.N() {
 		A := make([][]uint64, slots)
@@ -440,16 +430,16 @@ func fvLT() {
 				fmt.Printf("%3d ", A[i][j])
 			}
 			fmt.Printf("]")
-			if i == slots/2 {
+			if i == slots/2-1 {
 				fmt.Printf("   |/  ")
-			} else if i == slots/2+1 {
+			} else if i == slots/2 {
 				fmt.Printf("  /|   ")
 			} else {
 				fmt.Printf("       ")
 			}
 			fmt.Printf("[ %3d ]", data[i])
 
-			if i == slots/2 || i == slots/2+1 {
+			if i == slots/2-1 || i == slots/2 {
 				fmt.Printf("  ---  ")
 			} else {
 				fmt.Printf("       ")
@@ -480,16 +470,16 @@ func fvLT() {
 				fmt.Printf("%3d ", A[i][j])
 			}
 			fmt.Printf("]")
-			if i == l/2 {
+			if i == l/2-1 {
 				fmt.Printf("   |/  ")
-			} else if i == l/2+1 {
+			} else if i == l/2 {
 				fmt.Printf("  /|   ")
 			} else {
 				fmt.Printf("       ")
 			}
 			fmt.Printf("[ %3d ]", data[i])
 
-			if i == l/2 || i == l/2+1 {
+			if i == l/2-1 || i == l/2 {
 				fmt.Printf("  ---  ")
 			} else {
 				fmt.Printf("       ")
@@ -504,16 +494,16 @@ func fvLT() {
 				fmt.Printf("%3d ", B[i][j])
 			}
 			fmt.Printf("]")
-			if i == l/2 {
+			if i == l/2-1 {
 				fmt.Printf("   |/  ")
-			} else if i == l/2+1 {
+			} else if i == l/2 {
 				fmt.Printf("  /|   ")
 			} else {
 				fmt.Printf("       ")
 			}
 			fmt.Printf("[ %3d ]", data[i+l])
 
-			if i == l/2 || i == l/2+1 {
+			if i == l/2-1 || i == l/2 {
 				fmt.Printf("  ---  ")
 			} else {
 				fmt.Printf("       ")
