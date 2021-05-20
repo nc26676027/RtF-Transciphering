@@ -90,6 +90,31 @@ func primitiveRoot(q uint64) (g uint64) {
 	return
 }
 
+// primitiveRoot computes one primitive root (the smallest) of for the given prime q
+func PrimitiveRoot(q uint64) (g uint64) {
+	var tmp uint64
+
+	notFoundPrimitiveRoot := true
+
+	factors := getFactors(q - 1) //Factor q-1, might be slow
+
+	g = 2
+
+	for notFoundPrimitiveRoot {
+		g++
+		for _, factor := range factors {
+			tmp = (q - 1) / factor
+			// if for any factor of q-1, g^(q-1)/factor = 1 mod q, g is not a primitive root
+			if ModExp(g, int(tmp), q) == 1 {
+				notFoundPrimitiveRoot = true
+				break
+			}
+			notFoundPrimitiveRoot = false
+		}
+	}
+	return
+}
+
 // polynomialPollardsRho calculates x1^2 + c mod x2, and is used in factorizationPollardsRho
 func polynomialPollardsRho(x1, x2, c uint64) (z uint64) {
 	z = ModExp(x1, 2, x2) // x1^2 mod x2
