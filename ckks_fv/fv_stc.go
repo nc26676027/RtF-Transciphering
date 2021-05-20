@@ -1,8 +1,6 @@
 package ckks_fv
 
 import (
-	"math"
-
 	"github.com/ldsec/lattigo/v2/ring"
 )
 
@@ -11,7 +9,7 @@ func (ev *fvEvaluator) SlotsToCoeffs(ct *Ciphertext) *Ciphertext {
 	depth := ev.params.logSlots
 
 	for i, pVec := range ev.pDcd {
-		if fullBatch && i == depth-1 {
+		if fullBatch && (i >= depth-1) {
 			continue
 		}
 
@@ -50,36 +48,43 @@ func (params *Parameters) GenSlotToCoeffMatFV(encoder Encoder) (pDcd []*PtDiagMa
 func genDcdMats(logSlots, maxDepth int, t uint64, fullBatch bool) (plainVector []map[int][]uint64) {
 	var nttLevel, depth, nextnttLevel int
 
+	_, _, _ = nttLevel, depth, nextnttLevel
 	nttLevel = logSlots
 	plainVector = make([]map[int][]uint64, maxDepth)
 	roots := computePrimitiveRoots(1<<(logSlots+1), t)
 	diabMats := genDcdDiabDecomp(logSlots, roots, fullBatch)
-
-	// We compute the chain of merge in order or reverse order depending if its DFT or InvDFT because
-	// the way the levels are collapsed has an inpact on the total number of rotations and keys to be
-	// stored. Ex. instead of using 255 + 64 plaintext vectors, we can use 127 + 128 plaintext vectors
-	// by reversing the order of the merging.
-	merge := make([]int, maxDepth)
-	for i := 0; i < maxDepth; i++ {
-		depth = int(math.Ceil(float64(nttLevel) / float64(maxDepth-i)))
-		merge[len(merge)-i-1] = depth
-		nttLevel -= depth
-	}
-
-	nttLevel = 0
 	for i := 0; i < maxDepth; i++ {
 		// First layer of the i-th level of the NTT
-		plainVector[i] = diabMats[nttLevel]
+		plainVector[i] = diabMats[i]
+	}
 
-		// Merges the layer with the next levels of the NTT if the total depth requires it.
-		nextnttLevel = nttLevel + 1
-		for j := 0; j < merge[i]-1; j++ {
-			plainVector[i] = multDiabMats(diabMats[nextnttLevel], plainVector[i], logSlots, t)
-			nextnttLevel++
+	/*
+		// We compute the chain of merge in order or reverse order depending if its DFT or InvDFT because
+		// the way the levels are collapsed has an inpact on the total number of rotations and keys to be
+		// stored. Ex. instead of using 255 + 64 plaintext vectors, we can use 127 + 128 plaintext vectors
+		// by reversing the order of the merging.
+		merge := make([]int, maxDepth)
+		for i := 0; i < maxDepth; i++ {
+			depth = int(math.Ceil(float64(nttLevel) / float64(maxDepth-i)))
+			merge[len(merge)-i-1] = depth
+			nttLevel -= depth
 		}
 
-		nttLevel += merge[i]
-	}
+		nttLevel = 0
+		for i := 0; i < maxDepth; i++ {
+			// First layer of the i-th level of the NTT
+			plainVector[i] = diabMats[nttLevel]
+
+			// Merges the layer with the next levels of the NTT if the total depth requires it.
+			nextnttLevel = nttLevel + 1
+			for j := 0; j < merge[i]-1; j++ {
+				plainVector[i] = multDiabMats(diabMats[nextnttLevel], plainVector[i], logSlots, t)
+				nextnttLevel++
+			}
+
+			nttLevel += merge[i]
+		}
+	*/
 
 	return
 }
