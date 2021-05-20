@@ -124,14 +124,7 @@ type fvEvaluatorBuffers struct {
 	poolQKS [4]*ring.Poly
 	poolPKS [3]*ring.Poly
 
-	// TODO: remove unnecessary buffers
-	// fvEvaluator.LinearTransform
-	// fvEvaluator.MultiplyByDiabMatrixNaive
-	// fvEvaluator.MultiplyByDiabMatrixBSGS
-	poolQ2      [6]*ring.Poly
-	poolP       [6]*ring.Poly
-	poolQMul    [3]*ring.Poly
-	poolNTT     *ring.Poly
+	poolP       [5]*ring.Poly
 	c2QiQDecomp []*ring.Poly
 	c2QiPDecomp []*ring.Poly
 
@@ -151,13 +144,6 @@ func newEvaluatorBuffer(eval *fvEvaluatorBase) *fvEvaluatorBuffers {
 		}
 	}
 
-	for i := 0; i < 6; i++ {
-		evb.poolQ2[i] = eval.ringQ.NewPoly()
-	}
-	for i := 0; i < 3; i++ {
-		evb.poolQMul[i] = eval.ringQ.NewPoly()
-	}
-
 	if eval.ringP != nil {
 		evb.poolQKS = [4]*ring.Poly{eval.ringQ.NewPoly(), eval.ringQ.NewPoly(), eval.ringQ.NewPoly(), eval.ringQ.NewPoly()}
 		evb.poolPKS = [3]*ring.Poly{eval.ringP.NewPoly(), eval.ringP.NewPoly(), eval.ringP.NewPoly()}
@@ -170,11 +156,10 @@ func newEvaluatorBuffer(eval *fvEvaluatorBase) *fvEvaluatorBuffers {
 			evb.c2QiPDecomp[i] = eval.ringQ.NewPoly()
 		}
 
-		for i := 0; i < 6; i++ {
+		for i := 0; i < 5; i++ {
 			evb.poolP[i] = eval.ringP.NewPoly()
 		}
 	}
-	evb.poolNTT = eval.ringQ.NewPoly()
 
 	evb.tmpPt = NewPlaintextFV(eval.params)
 
@@ -985,7 +970,7 @@ func (eval *fvEvaluator) decomposeAndSplitNTT(level, beta int, c2NTT, c2InvNTT, 
 
 func (eval *fvEvaluator) DecompInternal(c2InvNTT *ring.Poly, c2QiQDecomp, c2QiPDecomp []*ring.Poly) {
 	ringQ := eval.ringQ
-	c2NTT := eval.poolNTT
+	c2NTT := eval.poolQ[1][0]
 	ringQ.NTT(c2InvNTT, c2NTT)
 
 	level := eval.params.QiCount() - 1
@@ -1111,10 +1096,11 @@ func (eval *fvEvaluator) SwitchKeysInPlaceNoModDown(level int, cx *ring.Poly, ev
 	ringP := eval.ringP
 
 	// Pointers allocation
-	c2QiQ := eval.poolQ2[0]
+	c2QiQ := eval.poolQ[0][0]
 	c2QiP := eval.poolP[0]
 
-	c2 := eval.poolNTT // but stores in InvNTT domain
+	// c2 := eval.poolNTT // but stores in InvNTT domain
+	c2 := eval.poolQ[1][0]
 
 	evakey0Q := new(ring.Poly)
 	evakey1Q := new(ring.Poly)

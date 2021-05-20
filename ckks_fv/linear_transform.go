@@ -357,15 +357,15 @@ func (eval *fvEvaluator) MultiplyByDiabMatrixNaive(vecNTT, res *Ciphertext, matr
 	ksResP0 := eval.poolP[0]  // Key-Switch res[0] mod P
 	ksResP1 := eval.poolP[1]  // Key-Switch res[1] mod P
 	tmpP0 := eval.poolP[2]    // Automorphism not-inplace pool res[0] mod P
-	tmpP1 := eval.poolQMul[0] // Automorphism no-inplace pool res[1] mod P
+	tmpP1 := eval.poolQ[0][5] // Automorphism no-inplace pool res[1] mod P
 	accP0 := eval.poolP[3]    // Accumulator res[0] mod P
 	accP1 := eval.poolP[4]    // Accumulator res[1] mod P
 
-	ct0TimesP := eval.poolQ2[0] // ct0 * P mod Q
-	ksResQ0 := eval.poolQ2[1]   // Key-Switch res[0] mod Q
-	ksResQ1 := eval.poolQ2[2]   // Key-Switch res[0] mod Q
-	tmpQ0 := eval.poolQ2[3]     // Automorphism not-inplace pool res[0] mod Q
-	tmpQ1 := eval.poolQ2[4]     // Automorphism not-inplace pool res[1] mod Q
+	ct0TimesP := eval.poolQ[0][0] // ct0 * P mod Q
+	ksResQ0 := eval.poolQ[0][1]   // Key-Switch res[0] mod Q
+	ksResQ1 := eval.poolQ[0][2]   // Key-Switch res[0] mod Q
+	tmpQ0 := eval.poolQ[0][3]     // Automorphism not-inplace pool res[0] mod Q
+	tmpQ1 := eval.poolQ[0][4]     // Automorphism not-inplace pool res[1] mod Q
 
 	ringQ.MulScalarBigintLvl(levelQ, vecNTT.value[0], ringP.ModulusBigint, ct0TimesP) // P*c0
 
@@ -578,25 +578,25 @@ func (eval *fvEvaluator) MultiplyByDiabMatrixBSGS(vecNTT, res *Ciphertext, matri
 	vecRotQ, vecRotP := eval.rotateHoistedNoModDown(vecNTT, rotations, eval.c2QiQDecomp, eval.c2QiPDecomp)
 
 	// Accumulator inner loop
-	tmpQ0 := eval.poolQMul[0] // unused memory pool from evaluator
-	tmpQ1 := eval.poolQMul[1] // unused memory pool from evaluator
+	tmpQ0 := eval.poolQ[0][1] // unused memory pool from evaluator
+	tmpQ1 := eval.poolQ[0][2] // unused memory pool from evaluator
 
 	// Accumulator outer loop
-	tmpQ2 := eval.poolQMul[2] // unused memory pool from evaluator
-	tmpQ3 := eval.poolQ2[4]
+	tmpQ2 := eval.poolQ[0][3] // unused memory pool from evaluator
+	tmpQ3 := eval.poolQ[0][4]
 	tmpP2 := eval.poolP[3]
 	tmpP3 := eval.poolP[4]
 
 	// Keyswitch accumulator
-	pool2Q := eval.poolQ2[1] // res(c0', c1') from evaluator keyswitch memory pool
-	pool3Q := eval.poolQ2[2] // res(c0', c1') from evaluator keyswitch memory pool
-	pool2P := eval.poolP[1]  // res(c0', c1') from evaluator keyswitch memory pool
-	pool3P := eval.poolP[2]  // res(c0', c1') from evaluator keyswitch memory pool
+	pool2Q := eval.poolQ[1][1] // res(c0', c1') from evaluator keyswitch memory pool
+	pool3Q := eval.poolQ[1][2] // res(c0', c1') from evaluator keyswitch memory pool
+	pool2P := eval.poolP[1]    // res(c0', c1') from evaluator keyswitch memory pool
+	pool3P := eval.poolP[2]    // res(c0', c1') from evaluator keyswitch memory pool
 
 	// Do not use (used by switchKeysInPlaceNoModDown)
 	// eval.PoolP[0]
-	// eval.PoolQ[0]
-	// eval.PoolQ[2]
+	// eval.PoolQ[0][0]
+	// eval.PoolQ[1][0]
 
 	N1Rot := 0
 	N2Rot := 0
