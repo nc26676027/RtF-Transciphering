@@ -515,7 +515,7 @@ func (r *Ring) divRoundByLastModulusNTT(level int, p0, p1 *Poly) {
 	}
 }
 
-// DivRoundByLastModulus divides (rounded) the polynomial by its last modulus. The input must be in the NTT domain.
+// DivRoundByLastModulus divides (rounded) the polynomial by its last modulus. The input must be not in the NTT domain.
 // Output poly level must be equal or one less than input level.
 func (r *Ring) DivRoundByLastModulus(p0, p1 *Poly) {
 	r.divRoundByLastModulus(p0.Level(), p0, p1)

@@ -42,6 +42,15 @@ func NewPlaintextFV(params *Parameters) *Plaintext {
 	return plaintext
 }
 
+func NewPlaintextFVLvl(params *Parameters, level int) *Plaintext {
+	plaintext := &Plaintext{&Element{}, nil}
+
+	plaintext.Element.value = []*ring.Poly{ring.NewPoly(params.N(), level+1)}
+	plaintext.value = plaintext.Element.value[0]
+
+	return plaintext
+}
+
 // NewPlaintextRingT creates and allocates a new plaintext in RingT (single modulus T).
 // The plaintext will be in RingT.
 func NewPlaintextRingT(params *Parameters) *PlaintextRingT {

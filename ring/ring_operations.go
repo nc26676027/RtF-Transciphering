@@ -969,6 +969,30 @@ func (r *Ring) SubScalarBigint(p1 *Poly, scalar *big.Int, p2 *Poly) {
 	}
 }
 
+// SubScalarBigintLvl subtracts a big.Int scalar from each coefficient of p1 upto given level and writes the result on p2.
+func (r *Ring) SubScalarBigintLvl(level int, p1 *Poly, scalar *big.Int, p2 *Poly) {
+	tmp := new(big.Int)
+	for i := 0; i < level+1; i++ {
+		Qi := r.Modulus[i]
+		scalarQi := tmp.Mod(scalar, NewUint(Qi)).Uint64()
+		p1tmp, p2tmp := p1.Coeffs[i], p2.Coeffs[i]
+		for j := 0; j < r.N; j = j + 8 {
+
+			x := (*[8]uint64)(unsafe.Pointer(&p1tmp[j]))
+			z := (*[8]uint64)(unsafe.Pointer(&p2tmp[j]))
+
+			z[0] = CRed(x[0]+Qi-scalarQi, Qi)
+			z[1] = CRed(x[1]+Qi-scalarQi, Qi)
+			z[2] = CRed(x[2]+Qi-scalarQi, Qi)
+			z[3] = CRed(x[3]+Qi-scalarQi, Qi)
+			z[4] = CRed(x[4]+Qi-scalarQi, Qi)
+			z[5] = CRed(x[5]+Qi-scalarQi, Qi)
+			z[6] = CRed(x[6]+Qi-scalarQi, Qi)
+			z[7] = CRed(x[7]+Qi-scalarQi, Qi)
+		}
+	}
+}
+
 // MulScalar multiplies each coefficient of p1 by a scalar and writes the result on p2.
 func (r *Ring) MulScalar(p1 *Poly, scalar uint64, p2 *Poly) {
 	for i, Qi := range r.Modulus {
