@@ -513,18 +513,172 @@ func fvLT() {
 	}
 }
 
+func MultiLevelFV() {
+	params := ckks_fv.DefaultFVParams[1]
+	encoder := ckks_fv.NewMFVEncoder(params)
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+
+	rlk := kgen.GenRelinearizationKey(sk)
+	rotIndex := make([]uint64, params.LogN())
+	for i := 0; i < params.LogN()-1; i++ {
+		rotIndex[i] = params.GaloisElementForColumnRotationBy(1 << i)
+	}
+	rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
+	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
+
+	N := params.N()
+	data1 := make([]uint64, N)
+	data2 := make([]uint64, N)
+	for i := 0; i < N; i++ {
+		data1[i] = uint64(2*i + 1)
+		data2[i] = params.T() - uint64(i+1)
+	}
+	innerSum1 := uint64(0)
+	innerSum2 := uint64(0)
+	for i := 0; i < N; i++ {
+		innerSum1 = (innerSum1 + data1[i]) % params.T()
+		innerSum2 = (innerSum2 + data2[i]) % params.T()
+	}
+
+	plaintext1 := ckks_fv.NewPlaintextFV(params)
+	plaintext2 := ckks_fv.NewPlaintextFV(params)
+	encoder.EncodeUint(data1, plaintext1)
+	encoder.EncodeUint(data2, plaintext2)
+
+	ciphertext1 := encryptor.EncryptNew(plaintext1)
+	ciphertext2 := encryptor.EncryptNew(plaintext2)
+
+	var ciphertext *ckks_fv.Ciphertext
+	ptMul := ckks_fv.NewPlaintextMul(params)
+	ptRt := ckks_fv.NewPlaintextRingT(params)
+	numPrint := 16
+
+	evaluator.ModSwitchMany(ciphertext1, ciphertext1, 2)
+	evaluator.ModSwitchMany(ciphertext2, ciphertext2, 2)
+
+	fmt.Println()
+	fmt.Println("Test ModSwitch")
+	printDec(ciphertext1, numPrint, decryptor, encoder)
+	printDec(ciphertext2, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test AddNew")
+	ciphertext = evaluator.AddNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test AddNoModNew")
+	ciphertext = evaluator.AddNoModNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test SubNew")
+	ciphertext = evaluator.SubNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test SubNoModNew")
+	ciphertext = evaluator.SubNoModNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test NegNew")
+	ciphertext = evaluator.NegNew(ciphertext1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test ReduceNew")
+	ciphertext = evaluator.AddNoModNew(ciphertext1, ciphertext2)
+	ciphertext = evaluator.ReduceNew(ciphertext)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test MulScalarNew")
+	ciphertext = evaluator.MulScalarNew(ciphertext1, 2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+	ciphertext = evaluator.MulScalarNew(ciphertext2, params.T()-1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test MulNew")
+	fmt.Println("1. PlaintextMul")
+	encoder.EncodeUintMul(data2, ptMul)
+	ciphertext = evaluator.MulNew(ciphertext1, ptMul)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println("2. PlaintextRingT")
+	encoder.EncodeUintRingT(data2, ptRt)
+	ciphertext = evaluator.MulNew(ciphertext1, ptRt)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println("3. Plaintext")
+	plaintext2 = decryptor.DecryptNew(ciphertext2)
+	ciphertext = evaluator.MulNew(ciphertext1, plaintext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println("4. Ciphertext")
+	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	ciphertext = evaluator.MulNew(ciphertext1, ciphertext1)
+	ciphertext = evaluator.MulNew(ciphertext, ciphertext)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test Relinearize New")
+	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
+	ciphertext = evaluator.RelinearizeNew(ciphertext)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test RotateColumnsNew")
+	ciphertext = evaluator.RotateColumnsNew(ciphertext1, 2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test RotateRowsNew")
+	ciphertext = evaluator.RotateRowsNew(ciphertext1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test InnerSum")
+	evaluator.InnerSum(ciphertext1, ciphertext)
+	fmt.Printf("InnerSum1: %d\n", innerSum1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	evaluator.InnerSum(ciphertext2, ciphertext)
+	fmt.Printf("InnerSum2: %d\n", innerSum2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+}
+
+func printDec(ct0 *ckks_fv.Ciphertext, numPrint int, decryptor ckks_fv.MFVDecryptor, encoder ckks_fv.MFVEncoder) {
+	decrypted := decryptor.DecryptNew(ct0)
+	decoded := encoder.DecodeUintNew(decrypted)
+	fmt.Println("  Result:")
+	for i := 0; i < numPrint; i++ {
+		fmt.Printf("    res[%d]: %d\n", i, decoded[i])
+	}
+}
+
 func main() {
 	var input string
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2, 3, 4.\n"
+	choice := "Choose one of 0, 1, 2, 3, 4, 5.\n"
 	for true {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): Transciphering")
 		fmt.Println("  (2): Transciphering with Bootstrapping")
 		fmt.Println("  (3): RtF Framework")
 		fmt.Println("  (4): FV Linear Transform")
+		fmt.Println("  (5): Multi Level FV")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -545,6 +699,9 @@ func main() {
 			case 4:
 				fmt.Println()
 				fvLT()
+			case 5:
+				fmt.Println()
+				MultiLevelFV()
 			default:
 				fmt.Println(choice)
 			}
