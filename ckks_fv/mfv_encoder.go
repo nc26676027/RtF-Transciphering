@@ -53,6 +53,8 @@ type MFVEncoder interface {
 	DecodeInt(pt interface{}, coeffs []int64)
 	DecodeUintNew(pt interface{}) (coeffs []uint64)
 	DecodeIntNew(pt interface{}) (coeffs []int64)
+
+	EncodeDiagMatrixT(level int, vector map[int][]uint64, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
 }
 
 type multiLevelContext struct {
@@ -67,11 +69,13 @@ type mfvEncoder struct {
 	params *Parameters
 
 	// ringQ *ring.Ring
+	ringP *ring.Ring
 	ringT *ring.Ring
 
 	indexMatrix []uint64
 	// scaler      ring.Scaler
 	// deltaMont   []uint64
+	deltaPMont []uint64
 	multiLevelContext
 
 	tmpPoly *ring.Poly
@@ -106,7 +110,7 @@ func newMultiLevelContext(params *Parameters) multiLevelContext {
 // NewMFVEncoder creates a new encoder from the provided parameters.
 func NewMFVEncoder(params *Parameters) MFVEncoder {
 
-	var ringT *ring.Ring
+	var ringP, ringT *ring.Ring
 	var err error
 
 	// if ringQ, err = ring.NewRing(params.N(), params.qi); err != nil {
@@ -114,6 +118,10 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 	// }
 
 	context := newMultiLevelContext(params)
+
+	if ringP, err = ring.NewRing(params.N(), params.pi); err != nil {
+		panic(err)
+	}
 
 	if ringT, err = ring.NewRing(params.N(), []uint64{params.t}); err != nil {
 		panic(err)
@@ -146,10 +154,12 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 	return &mfvEncoder{
 		params: params.Copy(),
 		// ringQ:       ringQ,
+		ringP:       ringP,
 		ringT:       ringT,
 		indexMatrix: indexMatrix,
 		// deltaMont:   GenLiftParams(ringQ, params.t),
 		// scaler:      ring.NewRNSScaler(params.t, ringQ),
+		deltaPMont:        GenLiftParams(ringP, params.t),
 		multiLevelContext: context,
 		tmpPoly:           ringT.NewPoly(),
 		tmpPtRt:           NewPlaintextRingT(params),
@@ -188,7 +198,8 @@ func (encoder *mfvEncoder) EncodeUintRingT(coeffs []uint64, p *PlaintextRingT) {
 	}
 
 	for i := len(coeffs); i < len(encoder.indexMatrix); i++ {
-		p.value.Coeffs[0][encoder.indexMatrix[i]] = 0
+		// p.value.Coeffs[0][encoder.indexMatrix[i]] = 0
+		p.value.Coeffs[0][encoder.indexMatrix[i]] = coeffs[i%len(coeffs)]
 	}
 
 	encoder.ringT.InvNTT(p.value, p.value)
@@ -409,4 +420,80 @@ func (encoder *mfvEncoder) DecodeIntNew(p interface{}) (coeffs []int64) {
 	coeffs = make([]int64, encoder.params.N())
 	encoder.DecodeInt(p, coeffs)
 	return
+}
+
+func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uint64, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT) {
+	matrix = new(PtDiagMatrixT)
+	matrix.LogSlots = logSlots
+	slots := 1 << logSlots
+
+	if len(diagMatrix) > 2 {
+		// N1*N2 = N
+		N1 := findbestbabygiantstepsplit(diagMatrix, slots, maxM1N2Ratio)
+		matrix.N1 = N1
+
+		index, _ := bsgsIndex(diagMatrix, slots, N1)
+
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for j := range index {
+			for _, i := range index[j] {
+				// manages inputs that have rotation between 0 and slots-1 or between -slots/2 and slots/2-1
+				v := diagMatrix[N1*j+i]
+				if len(v) == 0 {
+					v = diagMatrix[(N1*j+i)-slots]
+				}
+
+				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(level, logSlots, rotateT(v, -N1*j))
+			}
+		}
+	} else {
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for i := range diagMatrix {
+			idx := i
+			if idx < 0 {
+				idx += slots
+			}
+			matrix.Vec[idx] = encoder.encodeDiagonalT(level, logSlots, diagMatrix[i])
+		}
+
+		matrix.naive = true
+	}
+
+	return
+}
+
+func (encoder *mfvEncoder) encodeDiagonalT(level int, logSlots int, m []uint64) [2]*ring.Poly {
+	ringQ := encoder.ringQs[level]
+	ringP := encoder.ringP
+	ringT := encoder.ringT
+
+	// EncodeUintRingT
+	mT := ringT.NewPoly()
+	for i := 0; i < len(m); i++ {
+		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i]
+	}
+	for i := len(m); i < len(encoder.indexMatrix); i++ {
+		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i%len(m)]
+	}
+	ringT.InvNTT(mT, mT)
+
+	// RingTToMulRingQ
+	mQ := ringQ.NewPoly()
+	for i := 0; i < len(ringQ.Modulus); i++ {
+		copy(mQ.Coeffs[i], mT.Coeffs[0])
+	}
+	ringQ.NTTLazy(mQ, mQ)
+	ringQ.MForm(mQ, mQ)
+
+	// RingTToMulRingP
+	mP := ringP.NewPoly()
+	for i := 0; i < len(encoder.ringP.Modulus); i++ {
+		copy(mP.Coeffs[i], mT.Coeffs[0])
+	}
+	ringP.NTTLazy(mP, mP)
+	ringP.MForm(mP, mP)
+
+	return [2]*ring.Poly{mQ, mP}
 }
