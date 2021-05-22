@@ -388,6 +388,7 @@ func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uin
 	matrix = new(PtDiagMatrixT)
 	matrix.LogSlots = logSlots
 	slots := 1 << logSlots
+	isFullSlots := encoder.params.logN == encoder.params.logSlots
 
 	if len(diagMatrix) > 2 {
 		// N1*N2 = N
@@ -406,7 +407,7 @@ func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uin
 					v = diagMatrix[(N1*j+i)-slots]
 				}
 
-				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(level, logSlots, rotateT(v, -N1*j))
+				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(level, logSlots, rotateT(v, -N1*j, isFullSlots))
 			}
 		}
 	} else {

@@ -1094,14 +1094,23 @@ func addToDiagMatrix(diagMat map[int][]complex128, index int, vec []complex128) 
 	}
 }
 
-func rotateT(x []uint64, n int) (y []uint64) {
+func rotateT(x []uint64, n int, isFullSlots bool) (y []uint64) {
 	y = make([]uint64, len(x))
 
-	mask := int(len(x) - 1)
-
 	// Rotates to the left
-	for i := 0; i < len(x); i++ {
-		y[i] = x[(i+n)&mask]
+	if isFullSlots {
+		mask := int(len(x)/2 - 1)
+		for i := 0; i < len(x)/2; i++ {
+			y[i] = x[(i+n)&mask]
+		}
+		for i := len(x) / 2; i < len(x); i++ {
+			y[i] = x[(i+n)&mask+len(x)/2]
+		}
+	} else {
+		mask := int(len(x) - 1)
+		for i := 0; i < len(x); i++ {
+			y[i] = x[(i+n)&mask]
+		}
 	}
 
 	return
