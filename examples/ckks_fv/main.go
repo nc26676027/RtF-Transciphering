@@ -666,12 +666,85 @@ func printDec(ct0 *ckks_fv.Ciphertext, numPrint int, decryptor ckks_fv.MFVDecryp
 	}
 }
 
+func fvNoiseBudget() {
+	params := ckks_fv.DefaultFVParams[1]
+	encoder := ckks_fv.NewMFVEncoder(params)
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+	noiseEstimator := ckks_fv.NewMFVNoiseEstimator(params, sk)
+
+	rlk := kgen.GenRelinearizationKey(sk)
+	rotIndex := make([]uint64, params.LogN())
+	for i := 0; i < params.LogN()-1; i++ {
+		rotIndex[i] = params.GaloisElementForColumnRotationBy(1 << i)
+	}
+	rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
+	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
+
+	N := params.N()
+	data1 := make([]uint64, N)
+	data2 := make([]uint64, N)
+	for i := 0; i < N; i++ {
+		data1[i] = uint64(i)
+		data2[i] = params.T() - uint64(i+1)
+	}
+
+	plaintext1 := ckks_fv.NewPlaintextFV(params)
+	plaintext2 := ckks_fv.NewPlaintextFV(params)
+	encoder.EncodeUint(data1, plaintext1)
+	encoder.EncodeUint(data2, plaintext2)
+
+	ciphertext1 := encryptor.EncryptNew(plaintext1)
+	evaluator.ModSwitch(ciphertext1, ciphertext1)
+
+	var budget int
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+	evaluator.ModSwitch(ciphertext1, ciphertext1)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+}
+
 func main() {
 	var input string
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2, 3, 4, 5.\n"
+	choice := "Choose one of 0, 1, 2, 3, 4, 5, 6.\n"
 	for true {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): Transciphering")
@@ -679,6 +752,7 @@ func main() {
 		fmt.Println("  (3): RtF Framework")
 		fmt.Println("  (4): FV Linear Transform")
 		fmt.Println("  (5): Multi Level FV")
+		fmt.Println("  (6): FV Noise Estimate")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -702,6 +776,9 @@ func main() {
 			case 5:
 				fmt.Println()
 				MultiLevelFV()
+			case 6:
+				fmt.Println()
+				fvNoiseBudget()
 			default:
 				fmt.Println(choice)
 			}
