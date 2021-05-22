@@ -15,6 +15,16 @@ func NewCiphertextFV(params *Parameters, degree int) (ciphertext *Ciphertext) {
 	return &Ciphertext{newCiphertextElement(params, degree)}
 }
 
+func NewCiphertextFVLvl(params *Parameters, degree int, level int) (ciphertext *Ciphertext) {
+	ciphertext = &Ciphertext{&Element{}}
+	ciphertext.value = make([]*ring.Poly, degree+1)
+	for i := 0; i < degree+1; i++ {
+		ciphertext.value[i] = ring.NewPoly(params.N(), level+1)
+	}
+
+	return ciphertext
+}
+
 // NewCiphertextFVRandom generates a new uniformly distributed FV ciphertext of degree, level and scale.
 func NewCiphertextFVRandom(prng utils.PRNG, params *Parameters, degree int) (ciphertext *Ciphertext) {
 	ciphertext = &Ciphertext{newCiphertextElement(params, degree)}

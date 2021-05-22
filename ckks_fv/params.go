@@ -239,6 +239,80 @@ var DefaultParams = []*Parameters{
 	},
 }
 
+// DefaultFVParams is a set of default FV parameters ensuring 128 bit security.
+var DefaultFVParams = []*Parameters{
+
+	{
+		logN:  12,
+		t:     65537,
+		qi:    []uint64{0x7ffffec001, 0x8000016001}, // 39 + 39 bits
+		pi:    []uint64{0x40002001},                 // 30 bits
+		sigma: DefaultSigma,
+	},
+
+	{
+		logN:  13,
+		t:     65537,
+		qi:    []uint64{0x3fffffffef8001, 0x4000000011c001, 0x40000000120001}, // 54 + 54 + 54 bits
+		pi:    []uint64{0x7ffffffffb4001},                                     // 55 bits
+		sigma: DefaultSigma,
+	},
+
+	{
+		logN: 14,
+		t:    65537,
+		qi: []uint64{0x100000000060001, 0x80000000068001, 0x80000000080001,
+			0x3fffffffef8001, 0x40000000120001, 0x3fffffffeb8001}, // 56 + 55 + 55 + 54 + 54 + 54 bits
+		pi:    []uint64{0x80000000130001, 0x7fffffffe90001}, // 55 + 55 bits
+		sigma: DefaultSigma,
+	},
+
+	{
+		logN: 15,
+		t:    65537,
+		qi: []uint64{0x7ffffffffe70001, 0x7ffffffffe10001, 0x7ffffffffcc0001, // 59 + 59 + 59 bits
+			0x400000000270001, 0x400000000350001, 0x400000000360001, // 58 + 58 + 58 bits
+			0x3ffffffffc10001, 0x3ffffffffbe0001, 0x3ffffffffbd0001, // 58 + 58 + 58 bits
+			0x4000000004d0001, 0x400000000570001, 0x400000000660001}, // 58 + 58 + 58 bits
+		pi:    []uint64{0xffffffffffc0001, 0x10000000001d0001, 0x10000000006e0001}, // 60 + 60 + 60 bits
+		sigma: DefaultSigma,
+	},
+
+	{ // LogQP = 101.00005709794536
+		logN:  12,
+		t:     65537,
+		qi:    []uint64{0x800004001, 0x800008001}, // 2*35
+		pi:    []uint64{0x80014001},               // 1*31
+		sigma: DefaultSigma,
+	},
+
+	{ // LogQP = 201.99999999994753
+		logN:  13,
+		t:     65537,
+		qi:    []uint64{0x7fffffffe0001, 0x7fffffffcc001, 0x3ffffffffc001}, // 2*51 + 50
+		pi:    []uint64{0x4000000024001},                                   // 50
+		sigma: DefaultSigma,
+	},
+
+	{ // LogQP = 410.9999999999886
+		logN:  14,
+		t:     65537,
+		qi:    []uint64{0x7fffffffff18001, 0x8000000000f8001, 0x7ffffffffeb8001, 0x800000000158001, 0x7ffffffffe70001}, // 5*59
+		pi:    []uint64{0x7ffffffffe10001, 0x400000000068001},                                                          // 59+58
+		sigma: DefaultSigma,
+	},
+
+	{ // LogQP = 826.9999999999509
+		logN: 15,
+		t:    65537,
+		qi: []uint64{0x7ffffffffe70001, 0x7ffffffffe10001, 0x7ffffffffcc0001, 0x7ffffffffba0001, 0x8000000004a0001,
+			0x7ffffffffb00001, 0x800000000890001, 0x8000000009d0001, 0x7ffffffff630001, 0x800000000a70001,
+			0x7ffffffff510001}, // 11*59
+		pi:    []uint64{0x800000000b80001, 0x800000000bb0001, 0xffffffffffc0001}, // 2*59+60
+		sigma: DefaultSigma,
+	},
+}
+
 // Moduli stores the NTT primes of the RNS representation.
 type Moduli struct {
 	Qi []uint64 // Ciphertext prime moduli
