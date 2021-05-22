@@ -45,6 +45,7 @@ type MFVEvaluator interface {
 	ModSwitchMany(ct0, ctOut *Ciphertext, nbModSwitch int)
 
 	// Linear Transformation
+	SlotsToCoeffs(ct *Ciphertext) *Ciphertext
 	LinearTransform(vec *Ciphertext, linearTransform interface{}) (res []*Ciphertext)
 	MultiplyByDiabMatrix(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
 	MultiplyByDiabMatrixNaive(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
@@ -57,6 +58,7 @@ type mfvEvaluator struct {
 	*mfvEvaluatorBase
 	*mfvEvaluatorBuffers
 
+	pDcds           [][]*PtDiagMatrixT
 	rlk             *RelinearizationKey
 	rtks            *RotationKeySet
 	permuteNTTIndex map[uint64][]uint64
@@ -181,7 +183,7 @@ func newMFVEvaluatorBuffer(eval *mfvEvaluatorBase) *mfvEvaluatorBuffers {
 // NewMFVEvaluator creates a new Evaluator, that can be used to do homomorphic
 // operations on ciphertexts and/or plaintexts. It stores a small pool of polynomials
 // and ciphertexts that will be used for intermediate values.
-func NewMFVEvaluator(params *Parameters, evaluationKey EvaluationKey) MFVEvaluator {
+func NewMFVEvaluator(params *Parameters, evaluationKey EvaluationKey, pDcdMatrices [][]*PtDiagMatrixT) MFVEvaluator {
 	ev := new(mfvEvaluator)
 	ev.mfvEvaluatorBase = newMFVEvaluatorPrecomp(params)
 	ev.mfvEvaluatorBuffers = newMFVEvaluatorBuffer(ev.mfvEvaluatorBase)
@@ -199,6 +201,8 @@ func NewMFVEvaluator(params *Parameters, evaluationKey EvaluationKey) MFVEvaluat
 	if ev.rtks != nil {
 		ev.permuteNTTIndex = *ev.permuteNTTIndexesForKeys(ev.rtks)
 	}
+
+	ev.pDcds = pDcdMatrices
 	return ev
 }
 
@@ -214,14 +218,14 @@ func (eval *mfvEvaluator) permuteNTTIndexesForKeys(rtks *RotationKeySet) *map[ui
 }
 
 // NewMFVEvaluators creates n evaluators sharing the same read-only data-structures.
-func NewMFVEvaluators(params *Parameters, evaluationKey EvaluationKey, n int) []MFVEvaluator {
+func NewMFVEvaluators(params *Parameters, evaluationKey EvaluationKey, pDcdMatrices [][]*PtDiagMatrixT, n int) []MFVEvaluator {
 	if n <= 0 {
 		return []MFVEvaluator{}
 	}
 	evas := make([]MFVEvaluator, n, n)
 	for i := range evas {
 		if i == 0 {
-			evas[0] = NewMFVEvaluator(params, evaluationKey)
+			evas[0] = NewMFVEvaluator(params, evaluationKey, pDcdMatrices)
 		} else {
 			evas[i] = evas[i-1].ShallowCopy()
 		}
@@ -244,6 +248,7 @@ func (eval *mfvEvaluator) ShallowCopy() MFVEvaluator {
 		baseconverterQ1P:    eval.baseconverterQ1P.ShallowCopy(),
 		rlk:                 eval.rlk,
 		rtks:                eval.rtks,
+		pDcds:               eval.pDcds,
 	}
 }
 
@@ -1343,4 +1348,32 @@ func (eval *mfvEvaluator) ModSwitchMany(ct0, ctOut *Ciphertext, nbModSwitch int)
 		ringQ.DivRoundByLastModulusMany(ct0.value[i], ctOut.value[i], nbModSwitch)
 		ctOut.value[i].Coeffs = ctOut.value[i].Coeffs[:level+1-nbModSwitch]
 	}
+}
+
+func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) *Ciphertext {
+	if eval.pDcds == nil {
+		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
+	}
+
+	fullBatch := eval.params.logSlots == eval.params.logN
+	depth := eval.params.logSlots
+
+	level := ct.Level()
+	for i, pVec := range eval.pDcds[level] {
+		if fullBatch && (i >= depth-1) {
+			continue
+		}
+
+		ct = eval.LinearTransform(ct, pVec)[0]
+	}
+
+	if fullBatch {
+		tmp := eval.RotateRowsNew(ct)
+		ct0 := eval.LinearTransform(ct, eval.pDcds[level][depth-1])[0]
+		ct1 := eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
+
+		ct = eval.AddNew(ct0, ct1)
+	}
+
+	return ct
 }

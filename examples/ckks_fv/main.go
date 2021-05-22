@@ -528,7 +528,7 @@ func mfvLT() {
 
 	rotations := []int{1, 2, 3}
 	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys})
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys}, nil)
 
 	data := make([]uint64, slots)
 	for i := range data {
@@ -731,6 +731,68 @@ func fvStC() {
 	}
 }
 
+func mfvStC() {
+	var params *ckks_fv.Parameters
+	// params = ckks_fv.DefaultParams[12]
+	params = ckks_fv.DefaultParams[13] // full batching
+	slots := params.Slots()
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+	encoder := ckks_fv.NewMFVEncoder(params)
+
+	rotations := []int{0, 1, 2, 3, 4, 12, 6, 8, 15}
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	pDcds := encoder.GenSlotToCoeffMatFV()
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys}, pDcds)
+
+	var plaintext, decrypted *ckks_fv.Plaintext
+	var ciphertext, res *ckks_fv.Ciphertext
+	var decoded []uint64
+
+	g := ring.PrimitiveRoot(params.T())
+	w := ring.ModExp(g, (int(params.T())-1)/(slots*2), params.T())
+
+	A := make([][]uint64, slots)
+	M := slots * 2
+	for i := range A {
+		A[i] = make([]uint64, slots)
+		for j := range A[i] {
+			if i < slots/2 {
+				A[i][j] = ring.ModExp(uint64(5), i, uint64(M)) * uint64(j) % uint64(M)
+			} else {
+				A[i][j] = (-ring.ModExp(uint64(5), i-slots/2, uint64(M)) * uint64(j)) % uint64(M)
+			}
+		}
+	}
+
+	for j := 0; j < slots; j++ {
+		fmt.Printf("[")
+		for i := 0; i < slots; i++ {
+			fmt.Printf("%5v ", ring.ModExp(w, int(A[i][utils.BitReverse64(uint64(j), uint64(params.LogSlots()))]), params.T()))
+		}
+		fmt.Println("]")
+	}
+	fmt.Println()
+	fmt.Println()
+
+	for i := 0; i < slots; i++ {
+		data := make([]uint64, slots)
+		data[i] = 1
+
+		plaintext = ckks_fv.NewPlaintextFV(params)
+		encoder.EncodeUint(data, plaintext)
+		ciphertext = encryptor.EncryptNew(plaintext)
+
+		res = evaluator.SlotsToCoeffs(ciphertext)
+		decrypted = decryptor.DecryptNew(res)
+		decoded = encoder.DecodeUintNew(decrypted)
+		fmt.Printf("%5v\n", decoded[:slots])
+	}
+}
+
 func MultiLevelFV() {
 	params := ckks_fv.DefaultFVParams[1]
 	encoder := ckks_fv.NewMFVEncoder(params)
@@ -747,7 +809,7 @@ func MultiLevelFV() {
 	}
 	rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
 	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
-	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, nil)
 
 	N := params.N()
 	data1 := make([]uint64, N)
@@ -901,7 +963,7 @@ func fvNoiseBudget() {
 	}
 	rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
 	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
-	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, nil)
 
 	N := params.N()
 	data1 := make([]uint64, N)
@@ -995,7 +1057,8 @@ func main() {
 				mfvLT()
 			case 5:
 				fmt.Println()
-				fvStC()
+				// fvStC()
+				mfvStC()
 			case 6:
 				fmt.Println()
 				MultiLevelFV()

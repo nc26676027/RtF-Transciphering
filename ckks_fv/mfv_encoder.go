@@ -55,6 +55,7 @@ type MFVEncoder interface {
 	DecodeIntNew(pt interface{}) (coeffs []int64)
 
 	EncodeDiagMatrixT(level int, vector map[int][]uint64, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
+	GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT)
 }
 
 type multiLevelContext struct {
@@ -457,4 +458,28 @@ func (encoder *mfvEncoder) encodeDiagonalT(level int, logSlots int, m []uint64) 
 	ringP.MForm(mP, mP)
 
 	return [2]*ring.Poly{mQ, mP}
+}
+
+func (encoder *mfvEncoder) GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT) {
+	params := encoder.params
+	fullBatch := params.logSlots == params.logN
+	depth := params.logSlots
+
+	if fullBatch {
+		depth += 1
+	}
+
+	modCount := len(params.qi)
+	pDcds = make([][]*PtDiagMatrixT, modCount)
+
+	for level := 0; level < modCount; level++ {
+		pDcds[level] = make([]*PtDiagMatrixT, depth)
+		pVecDcd := genDcdMats(params.logSlots, depth, params.t, fullBatch)
+
+		for i := 0; i < len(pDcds[level]); i++ {
+			pDcds[level][i] = encoder.EncodeDiagMatrixT(level, pVecDcd[i], 16.0, params.logSlots)
+		}
+	}
+
+	return
 }
