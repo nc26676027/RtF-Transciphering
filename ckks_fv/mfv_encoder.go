@@ -68,14 +68,11 @@ type multiLevelContext struct {
 type mfvEncoder struct {
 	params *Parameters
 
-	// ringQ *ring.Ring
 	ringP *ring.Ring
 	ringT *ring.Ring
 
 	indexMatrix []uint64
-	// scaler      ring.Scaler
-	// deltaMont   []uint64
-	deltaPMont []uint64
+	deltaPMont  []uint64
 	multiLevelContext
 
 	tmpPoly *ring.Poly
@@ -113,10 +110,6 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 	var ringP, ringT *ring.Ring
 	var err error
 
-	// if ringQ, err = ring.NewRing(params.N(), params.qi); err != nil {
-	// 	panic(err)
-	// }
-
 	context := newMultiLevelContext(params)
 
 	if ringP, err = ring.NewRing(params.N(), params.pi); err != nil {
@@ -152,36 +145,16 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 	}
 
 	return &mfvEncoder{
-		params: params.Copy(),
-		// ringQ:       ringQ,
-		ringP:       ringP,
-		ringT:       ringT,
-		indexMatrix: indexMatrix,
-		// deltaMont:   GenLiftParams(ringQ, params.t),
-		// scaler:      ring.NewRNSScaler(params.t, ringQ),
+		params:            params.Copy(),
+		ringP:             ringP,
+		ringT:             ringT,
+		indexMatrix:       indexMatrix,
 		deltaPMont:        GenLiftParams(ringP, params.t),
 		multiLevelContext: context,
 		tmpPoly:           ringT.NewPoly(),
 		tmpPtRt:           NewPlaintextRingT(params),
 	}
 }
-
-// GenLiftParams generates the lifting parameters.
-// func GenLiftParams(ringQ *ring.Ring, t uint64) (deltaMont []uint64) {
-
-// 	delta := new(big.Int).Quo(ringQ.ModulusBigint, ring.NewUint(t))
-
-// 	deltaMont = make([]uint64, len(ringQ.Modulus))
-
-// 	tmp := new(big.Int)
-// 	bredParams := ringQ.BredParams
-// 	for i, Qi := range ringQ.Modulus {
-// 		deltaMont[i] = tmp.Mod(delta, ring.NewUint(Qi)).Uint64()
-// 		deltaMont[i] = ring.MForm(deltaMont[i], Qi, bredParams[i])
-// 	}
-
-// 	return
-// }
 
 // EncodeUintRingT encodes a slice of uint64 into a Plaintext in R_t
 func (encoder *mfvEncoder) EncodeUintRingT(coeffs []uint64, p *PlaintextRingT) {
@@ -277,7 +250,6 @@ func (encoder *mfvEncoder) EncodeIntMul(coeffs []int64, p *PlaintextMul) {
 
 // ScaleUp transforms a PlaintextRingT (R_t) into a Plaintext (R_q) by scaling up the coefficient by Q/t.
 func (encoder *mfvEncoder) ScaleUp(ptRt *PlaintextRingT, pt *Plaintext) {
-	// scaleUp(encoder.ringQ, encoder.deltaMont, ptRt.value, pt.value)
 	level := pt.Level()
 	ringQ := encoder.ringQs[level]
 	deltaMont := encoder.deltasMont[level]
@@ -312,7 +284,6 @@ func scaleUp(ringQ *ring.Ring, deltaMont []uint64, pIn, pOut *ring.Poly) {
 
 // ScaleDown transforms a Plaintext (R_q) into a PlaintextRingT (R_t) by scaling down the coefficient by t/Q and rounding.
 func (encoder *mfvEncoder) ScaleDown(pt *Plaintext, ptRt *PlaintextRingT) {
-	// encoder.scaler.DivByQOverTRounded(pt.value, ptRt.value)
 	level := pt.Level()
 	encoder.scalers[level].DivByQOverTRounded(pt.value, ptRt.value)
 }
@@ -323,12 +294,7 @@ func (encoder *mfvEncoder) RingTToMul(ptRt *PlaintextRingT, ptMul *PlaintextMul)
 	if ptRt.value != ptMul.value {
 		copy(ptMul.value.Coeffs[0], ptRt.value.Coeffs[0])
 	}
-	// for i := 1; i < len(encoder.ringQ.Modulus); i++ {
-	// 	copy(ptMul.value.Coeffs[i], ptRt.value.Coeffs[0])
-	// }
 
-	// encoder.ringQ.NTTLazy(ptMul.value, ptMul.value)
-	// encoder.ringQ.MForm(ptMul.value, ptMul.value)
 	level := ptMul.Level()
 	for i := 1; i < level+1; i++ {
 		copy(ptMul.value.Coeffs[i], ptRt.value.Coeffs[0])
@@ -342,8 +308,6 @@ func (encoder *mfvEncoder) RingTToMul(ptRt *PlaintextRingT, ptMul *PlaintextMul)
 // MulToRingT transforms a PlaintextMul into PlaintextRingT by operating the inverse NTT transform of R_q and
 // putting the coefficients out of the Montgomery form.
 func (encoder *mfvEncoder) MulToRingT(pt *PlaintextMul, ptRt *PlaintextRingT) {
-	// encoder.ringQ.InvNTTLvl(0, pt.value, ptRt.value)
-	// encoder.ringQ.InvMFormLvl(0, ptRt.value, ptRt.value)
 	level := pt.Level()
 	ringQ := encoder.ringQs[level]
 	ringQ.InvNTTLvl(0, pt.value, ptRt.value)
@@ -385,7 +349,6 @@ func (encoder *mfvEncoder) DecodeUint(p interface{}, coeffs []uint64) {
 // DecodeUintNew decodes any plaintext type and returns the coefficients in a new []uint64.
 // It panics if p is not PlaintextRingT, Plaintext or PlaintextMul.
 func (encoder *mfvEncoder) DecodeUintNew(p interface{}) (coeffs []uint64) {
-	// coeffs = make([]uint64, encoder.ringQ.N)
 	coeffs = make([]uint64, encoder.params.N())
 	encoder.DecodeUint(p, coeffs)
 	return
@@ -402,7 +365,6 @@ func (encoder *mfvEncoder) DecodeInt(p interface{}, coeffs []int64) {
 	modulus := int64(encoder.params.t)
 	modulusHalf := modulus >> 1
 	var value int64
-	// for i := 0; i < encoder.ringQ.N; i++ {
 	for i := 0; i < encoder.params.N(); i++ {
 
 		value = int64(encoder.tmpPoly.Coeffs[0][encoder.indexMatrix[i]])
@@ -416,7 +378,6 @@ func (encoder *mfvEncoder) DecodeInt(p interface{}, coeffs []int64) {
 // DecodeIntNew decodes any plaintext type and returns the coefficients in a new []int64. It also decodes the sign
 // modulus (by centering the values around the plaintext). It panics if p is not PlaintextRingT, Plaintext or PlaintextMul.
 func (encoder *mfvEncoder) DecodeIntNew(p interface{}) (coeffs []int64) {
-	// coeffs = make([]int64, encoder.ringQ.N)
 	coeffs = make([]int64, encoder.params.N())
 	encoder.DecodeInt(p, coeffs)
 	return
