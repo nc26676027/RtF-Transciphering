@@ -59,10 +59,10 @@ type MFVEncoder interface {
 	GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT)
 
 	EncodeUintRingTSmall(coeffs []uint64, pt *PlaintextRingT)
+	EncodeUintMulSmall(coeffs []uint64, pt *PlaintextMul)
 	EncodeUintSmall(coeffs []uint64, p *Plaintext)
 	DecodeUintSmall(p interface{}, coeffs []uint64)
 	DecodeUintSmallNew(p interface{}) (coeffs []uint64)
-	// EncodeSmallDiagMatrixT(level int, vector map[int][]uint64, maxN1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
 }
 
 type multiLevelContext struct {
@@ -279,6 +279,14 @@ func (encoder *mfvEncoder) EncodeUintMul(coeffs []uint64, p *PlaintextMul) {
 	encoder.EncodeUintRingT(coeffs, ptRt)
 
 	// Puts in NTT+Montgomery domains of ringQ
+	encoder.RingTToMul(ptRt, p)
+}
+
+func (encoder *mfvEncoder) EncodeUintMulSmall(coeffs []uint64, p *PlaintextMul) {
+	ptRt := &PlaintextRingT{p.Element, p.Element.value[0]}
+
+	encoder.EncodeUintRingTSmall(coeffs, ptRt)
+
 	encoder.RingTToMul(ptRt, p)
 }
 

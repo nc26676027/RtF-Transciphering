@@ -42,6 +42,10 @@ func NewPlaintextFV(params *Parameters) *Plaintext {
 	return plaintext
 }
 
+// NewPlaintextLvl creates and allocates a new plaintext in RingQ (multiple moduli of Q)
+// of given level.
+// The plaintext will be in RingQ and scaled by Q/t.
+// Slower encoding and larger plaintext size
 func NewPlaintextFVLvl(params *Parameters, level int) *Plaintext {
 	plaintext := &Plaintext{&Element{}, nil}
 
@@ -65,5 +69,16 @@ func NewPlaintextRingT(params *Parameters) *PlaintextRingT {
 func NewPlaintextMul(params *Parameters) *PlaintextMul {
 	plaintext := &PlaintextMul{newPlaintextMulElement(params), nil}
 	plaintext.value = plaintext.Element.value[0]
+	return plaintext
+}
+
+// NewPlaintextMulLvl creates and allocates a new plaintext optimized for ciphertext x plaintext multiplication.
+// The plaintext will be in the NTT and Montgomery domain of RingQ of given level and not scaled by Q/t.
+func NewPlaintextMulLvl(params *Parameters, level int) *PlaintextMul {
+	plaintext := &PlaintextMul{&Element{}, nil}
+
+	plaintext.Element.value = []*ring.Poly{ring.NewPoly(params.N(), level+1)}
+	plaintext.value = plaintext.Element.value[0]
+
 	return plaintext
 }

@@ -361,6 +361,42 @@ func smallBatchMFV() {
 
 	// Test Mul + Relin
 	fmt.Println("Test Mul (+ Relin)")
+	fmt.Println("1. Multiply by PlaintextMul")
+	plaintextMul := ckks_fv.NewPlaintextMulLvl(params, ciphertext2.Level())
+	encoder.EncodeUintMulSmall(data2, plaintextMul)
+	ciphertext = evaluator.MulNew(ciphertext1, plaintextMul)
+	evaluator.Relinearize(ciphertext, ciphertext)
+	decrypted = decryptor.DecryptNew(ciphertext)
+	decoded = encoder.DecodeUintSmallNew(decrypted)
+	for i := 0; i < FVSlots; i++ {
+		sol := (data1[i] * data2[i]) % params.T()
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+	fmt.Println("2. Multiply By PlaintextRingT")
+	plaintextRingT := ckks_fv.NewPlaintextRingT(params)
+	encoder.EncodeUintRingTSmall(data2, plaintextRingT)
+	ciphertext = evaluator.MulNew(ciphertext1, plaintextRingT)
+	evaluator.Relinearize(ciphertext, ciphertext)
+	decrypted = decryptor.DecryptNew(ciphertext)
+	decoded = encoder.DecodeUintSmallNew(decrypted)
+	for i := 0; i < FVSlots; i++ {
+		sol := (data1[i] * data2[i]) % params.T()
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+	fmt.Println("3. Multiply by Plaintext")
+	plaintext2 = decryptor.DecryptNew(ciphertext2)
+	ciphertext = evaluator.MulNew(ciphertext1, plaintext2)
+	evaluator.Relinearize(ciphertext, ciphertext)
+	decrypted = decryptor.DecryptNew(ciphertext)
+	encoder.DecodeUintSmall(decrypted, decoded)
+	for i := 0; i < FVSlots; i++ {
+		sol := (data1[i] * data2[i]) % params.T()
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+	fmt.Println("4. Multiply by Ciphertext")
 	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
 	evaluator.Relinearize(ciphertext, ciphertext)
 	decrypted = decryptor.DecryptNew(ciphertext)

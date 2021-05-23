@@ -544,7 +544,6 @@ func (eval *mfvEvaluator) tensoreLowDeg(ct0, ct1 *Element) {
 
 func (eval *mfvEvaluator) tensortLargeDeg(ct0, ct1 *Element) {
 
-	fmt.Println("tensortLargeDeg")
 	if ct0.Level() != ct1.Level() {
 		panic("cannot tensortLargeDeg: inputs should have the same level")
 	}
@@ -648,6 +647,9 @@ func (eval *mfvEvaluator) Mul(op0 *Ciphertext, op1 Operand, ctOut *Ciphertext) {
 }
 
 func (eval *mfvEvaluator) mulPlaintextMul(ct0 *Ciphertext, ptRt *PlaintextMul, ctOut *Ciphertext) {
+	if ct0.Level() != ptRt.Level() {
+		panic("cannot mulPlaintextMul: ct0 and ptRt should have the same level")
+	}
 	level := ct0.Level()
 	for i := range ct0.value {
 		eval.ringQ.NTTLazyLvl(level, ct0.value[i], ctOut.value[i])
