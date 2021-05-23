@@ -56,6 +56,12 @@ type MFVEncoder interface {
 
 	EncodeDiagMatrixT(level int, vector map[int][]uint64, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
 	GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT)
+
+	EncodeUintRingTSmall(coeffs []uint64, pt *PlaintextRingT)
+	EncodeUintSmall(coeffs []uint64, p *Plaintext)
+	DecodeUintSmall(p interface{}, coeffs []uint64)
+	DecodeUintSmallNew(p interface{}) (coeffs []uint64)
+	EncodeSmallDiagMatrixT(level int, vector map[int][]uint64, maxN1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
 }
 
 type multiLevelContext struct {
@@ -69,15 +75,18 @@ type multiLevelContext struct {
 type mfvEncoder struct {
 	params *Parameters
 
-	ringP *ring.Ring
-	ringT *ring.Ring
+	ringP      *ring.Ring
+	ringT      *ring.Ring
+	ringTSmall *ring.Ring
 
-	indexMatrix []uint64
-	deltaPMont  []uint64
+	indexMatrix      []uint64
+	indexMatrixSmall []uint64
+	deltaPMont       []uint64
 	multiLevelContext
 
-	tmpPoly *ring.Poly
-	tmpPtRt *PlaintextRingT
+	tmpPoly      *ring.Poly
+	tmpPtRt      *PlaintextRingT
+	tmpPolySmall *ring.Poly
 }
 
 func newMultiLevelContext(params *Parameters) multiLevelContext {
@@ -108,7 +117,7 @@ func newMultiLevelContext(params *Parameters) multiLevelContext {
 // NewMFVEncoder creates a new encoder from the provided parameters.
 func NewMFVEncoder(params *Parameters) MFVEncoder {
 
-	var ringP, ringT *ring.Ring
+	var ringP, ringT, ringTSmall *ring.Ring
 	var err error
 
 	context := newMultiLevelContext(params)
@@ -118,6 +127,10 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 	}
 
 	if ringT, err = ring.NewRing(params.N(), []uint64{params.t}); err != nil {
+		panic(err)
+	}
+
+	if ringTSmall, err = ring.NewRing(params.FVSlots(), []uint64{params.t}); err != nil {
 		panic(err)
 	}
 
@@ -145,15 +158,34 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 		pos &= (m - 1)
 	}
 
+	m = 2 * params.FVSlots()
+	indexMatrixSmall := make([]uint64, params.FVSlots())
+	logFVSlots := params.logFVSlots
+	rowSize = params.FVSlots() >> 1
+	pos = 1
+	for i := 0; i < rowSize; i++ {
+		index1 = (pos - 1) >> 1
+		index2 = (m - pos - 1) >> 1
+
+		indexMatrixSmall[i] = utils.BitReverse64(uint64(index1), uint64(logFVSlots))
+		indexMatrixSmall[i|rowSize] = utils.BitReverse64(uint64(index2), uint64(logFVSlots))
+
+		pos *= GaloisGen
+		pos &= (m - 1)
+	}
+
 	return &mfvEncoder{
 		params:            params.Copy(),
 		ringP:             ringP,
 		ringT:             ringT,
+		ringTSmall:        ringTSmall,
 		indexMatrix:       indexMatrix,
+		indexMatrixSmall:  indexMatrixSmall,
 		deltaPMont:        GenLiftParams(ringP, params.t),
 		multiLevelContext: context,
 		tmpPoly:           ringT.NewPoly(),
 		tmpPtRt:           NewPlaintextRingT(params),
+		tmpPolySmall:      ringTSmall.NewPoly(),
 	}
 }
 
@@ -179,6 +211,28 @@ func (encoder *mfvEncoder) EncodeUintRingT(coeffs []uint64, p *PlaintextRingT) {
 	encoder.ringT.InvNTT(p.value, p.value)
 }
 
+// EncodeUintRingTSmall encodes a slice of uint64 of length FVSlots into a Plaintext R_t
+func (encoder *mfvEncoder) EncodeUintRingTSmall(coeffs []uint64, p *PlaintextRingT) {
+	if len(coeffs) != len(encoder.indexMatrixSmall) {
+		panic("invalid input to encode: number of coefficients must be equal to the number of FV slots")
+	}
+
+	if len(p.value.Coeffs[0]) != len(encoder.indexMatrix) {
+		panic("invalid plaintext to receive encoding: number of coefficients does not match the ring degree")
+	}
+
+	poly := encoder.tmpPolySmall
+	for i := 0; i < len(coeffs); i++ {
+		poly.Coeffs[0][encoder.indexMatrixSmall[i]] = coeffs[i]
+	}
+	encoder.ringTSmall.InvNTT(poly, poly)
+
+	gap := 1 << (encoder.params.logN - encoder.params.logFVSlots)
+	for i := 0; i < len(coeffs); i++ {
+		p.value.Coeffs[0][i*gap] = poly.Coeffs[0][i]
+	}
+}
+
 // EncodeUint encodes an uint64 slice of size at most N on a plaintext.
 func (encoder *mfvEncoder) EncodeUint(coeffs []uint64, p *Plaintext) {
 	ptRt := &PlaintextRingT{p.Element, p.Element.value[0]}
@@ -187,6 +241,15 @@ func (encoder *mfvEncoder) EncodeUint(coeffs []uint64, p *Plaintext) {
 	encoder.EncodeUintRingT(coeffs, ptRt)
 
 	// Scales by Q/t
+	encoder.ScaleUp(ptRt, p)
+}
+
+// EncodeUintSmall encodes an uint64 slice of size FVSlots on a plaintext
+func (encoder *mfvEncoder) EncodeUintSmall(coeffs []uint64, p *Plaintext) {
+	ptRt := &PlaintextRingT{p.Element, p.Element.value[0]}
+
+	encoder.EncodeUintRingTSmall(coeffs, ptRt)
+
 	encoder.ScaleUp(ptRt, p)
 }
 
@@ -341,9 +404,38 @@ func (encoder *mfvEncoder) DecodeUint(p interface{}, coeffs []uint64) {
 
 	encoder.ringT.NTT(ptRt.value, encoder.tmpPoly)
 
-	// for i := 0; i < encoder.ringQ.N; i++ {
 	for i := 0; i < encoder.params.N(); i++ {
 		coeffs[i] = encoder.tmpPoly.Coeffs[0][encoder.indexMatrix[i]]
+	}
+}
+
+// DecodeUintSmallNew decodes any plaintext type and returns the coefficients in a new []uint64.
+// It panics if p is not PlaintextRingT, Plaintext or PlaintextMul.
+func (encoder *mfvEncoder) DecodeUintSmallNew(p interface{}) (coeffs []uint64) {
+	coeffs = make([]uint64, encoder.params.FVSlots())
+	encoder.DecodeUintSmall(p, coeffs)
+	return
+}
+
+// DecodeUintSmall decodes any plaintext type and write the coefficients in coeffs. It panics if p is not PlaintextRingT, Plaintext or PlaintextMul.
+func (encoder *mfvEncoder) DecodeUintSmall(p interface{}, coeffs []uint64) {
+	var ptRt *PlaintextRingT
+	var isInRingT bool
+	if ptRt, isInRingT = p.(*PlaintextRingT); !isInRingT {
+		encoder.DecodeRingT(p, encoder.tmpPtRt)
+		ptRt = encoder.tmpPtRt
+	}
+
+	poly := encoder.tmpPolySmall
+	gap := 1 << (encoder.params.logN - encoder.params.logFVSlots)
+	for i := 0; i < encoder.params.FVSlots(); i++ {
+		poly.Coeffs[0][i] = ptRt.value.Coeffs[0][i*gap]
+	}
+
+	encoder.ringTSmall.NTT(poly, poly)
+
+	for i := 0; i < encoder.params.FVSlots(); i++ {
+		coeffs[i] = poly.Coeffs[0][encoder.indexMatrixSmall[i]]
 	}
 }
 
@@ -384,11 +476,11 @@ func (encoder *mfvEncoder) DecodeIntNew(p interface{}) (coeffs []int64) {
 	return
 }
 
-func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uint64, maxM1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT) {
+func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uint64, maxM1N2Ratio float64, logFVSlots int) (matrix *PtDiagMatrixT) {
 	matrix = new(PtDiagMatrixT)
-	matrix.LogSlots = logSlots
-	slots := 1 << logSlots
-	isFullSlots := encoder.params.logN == encoder.params.logSlots
+	matrix.LogSlots = logFVSlots
+	slots := 1 << logFVSlots
+	isFullSlots := encoder.params.logN == encoder.params.logFVSlots
 
 	if len(diagMatrix) > 2 {
 		// N1*N2 = N
@@ -407,7 +499,7 @@ func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uin
 					v = diagMatrix[(N1*j+i)-slots]
 				}
 
-				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(level, logSlots, rotateT(v, -N1*j, isFullSlots))
+				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(level, logFVSlots, rotateT(v, -N1*j, isFullSlots))
 			}
 		}
 	} else {
@@ -418,7 +510,7 @@ func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uin
 			if idx < 0 {
 				idx += slots
 			}
-			matrix.Vec[idx] = encoder.encodeDiagonalT(level, logSlots, diagMatrix[i])
+			matrix.Vec[idx] = encoder.encodeDiagonalT(level, logFVSlots, diagMatrix[i])
 		}
 
 		matrix.naive = true
@@ -461,6 +553,86 @@ func (encoder *mfvEncoder) encodeDiagonalT(level int, logSlots int, m []uint64) 
 	return [2]*ring.Poly{mQ, mP}
 }
 
+func (encoder *mfvEncoder) EncodeSmallDiagMatrixT(level int, diagMatrix map[int][]uint64, maxN1N2Ratio float64, logFVSlots int) (matrix *PtDiagMatrixT) {
+	matrix = new(PtDiagMatrixT)
+	matrix.LogSlots = logFVSlots
+	fvSlots := 1 << logFVSlots
+
+	if len(diagMatrix) > 2 {
+		// N1*N2 = N
+		N1 := findbestbabygiantstepsplit(diagMatrix, fvSlots, maxN1N2Ratio)
+		matrix.N1 = N1
+
+		index, _ := bsgsIndex(diagMatrix, fvSlots, N1)
+
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for j := range index {
+			for _, i := range index[j] {
+				// manages inputs that have rotation between 0 and slots-1 or between -slots/2 and slots/2-1
+				v := diagMatrix[N1*j+i]
+				if len(v) == 0 {
+					v = diagMatrix[(N1*j+i)-fvSlots]
+				}
+
+				matrix.Vec[N1*j+i] = encoder.encodeSmallDiagonalT(level, logFVSlots, rotateSmallT(v, -N1*j))
+			}
+		}
+	} else {
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for i := range diagMatrix {
+			idx := i
+			if idx < 0 {
+				idx += fvSlots
+			}
+			matrix.Vec[idx] = encoder.encodeSmallDiagonalT(level, logFVSlots, diagMatrix[i])
+		}
+
+		matrix.naive = true
+	}
+
+	return
+}
+
+func (encoder *mfvEncoder) encodeSmallDiagonalT(level, logFVSlots int, m []uint64) [2]*ring.Poly {
+	ringQ := encoder.ringQs[level]
+	ringP := encoder.ringP
+	ringT := encoder.ringT
+	ringTSmall := encoder.ringTSmall
+	tmp := encoder.tmpPolySmall
+
+	// EncodeUintRingT
+	for i := 0; i < len(m); i++ {
+		tmp.Coeffs[0][encoder.indexMatrixSmall[i]] = m[i]
+	}
+	ringTSmall.InvNTT(tmp, tmp)
+
+	mT := ringT.NewPoly()
+	gap := 1 << (encoder.params.logN - logFVSlots)
+	for i := 0; i < (1 << logFVSlots); i++ {
+		mT.Coeffs[0][i*gap] = tmp.Coeffs[0][i]
+	}
+
+	// RingTToMulRingQ
+	mQ := ringQ.NewPoly()
+	for i := 0; i < len(ringQ.Modulus); i++ {
+		copy(mQ.Coeffs[i], mT.Coeffs[0])
+	}
+	ringQ.NTTLazy(mQ, mQ)
+	ringQ.MForm(mQ, mQ)
+
+	// RingTToMulRingP
+	mP := ringP.NewPoly()
+	for i := 0; i < len(encoder.ringP.Modulus); i++ {
+		copy(mP.Coeffs[i], mT.Coeffs[0])
+	}
+	ringP.NTTLazy(mP, mP)
+	ringP.MForm(mP, mP)
+
+	return [2]*ring.Poly{mQ, mP}
+}
+
 func (encoder *mfvEncoder) GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT) {
 	params := encoder.params
 
@@ -468,11 +640,11 @@ func (encoder *mfvEncoder) GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT) {
 	pDcds = make([][]*PtDiagMatrixT, modCount)
 
 	for level := 0; level < modCount; level++ {
-		pDcds[level] = make([]*PtDiagMatrixT, params.logSlots+1)
-		pVecDcd := genDcdMats(params.logSlots, params.t)
+		pDcds[level] = make([]*PtDiagMatrixT, params.logFVSlots+1)
+		pVecDcd := genDcdMats(params.logFVSlots, params.t)
 
 		for i := 0; i < len(pDcds[level]); i++ {
-			pDcds[level][i] = encoder.EncodeDiagMatrixT(level, pVecDcd[i], 16.0, params.logSlots)
+			pDcds[level][i] = encoder.EncodeSmallDiagMatrixT(level, pVecDcd[i], 16.0, params.logFVSlots)
 		}
 	}
 

@@ -1355,25 +1355,22 @@ func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) *Ciphertext {
 		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
 	}
 
-	fullBatch := eval.params.logSlots == eval.params.logN
-	depth := eval.params.logSlots
+	depth := eval.params.logFVSlots
 
 	level := ct.Level()
 	for i, pVec := range eval.pDcds[level] {
-		if fullBatch && (i >= depth-1) {
+		if i >= depth-1 {
 			continue
 		}
 
 		ct = eval.LinearTransform(ct, pVec)[0]
 	}
 
-	if fullBatch {
-		tmp := eval.RotateRowsNew(ct)
-		ct0 := eval.LinearTransform(ct, eval.pDcds[level][depth-1])[0]
-		ct1 := eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
+	tmp := eval.RotateRowsNew(ct)
+	ct0 := eval.LinearTransform(ct, eval.pDcds[level][depth-1])[0]
+	ct1 := eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
 
-		ct = eval.AddNew(ct0, ct1)
-	}
+	ct = eval.AddNew(ct0, ct1)
 
 	return ct
 }
