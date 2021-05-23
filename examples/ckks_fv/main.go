@@ -514,6 +514,162 @@ func fvLT() {
 	}
 }
 
+func mfvLT() {
+	var params *ckks_fv.Parameters
+	// params = ckks_fv.DefaultParams[10] // params.N == params.Slots
+	params = ckks_fv.DefaultParams[11] // params.N > params.Slots
+	slots := params.Slots()
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+	encoder := ckks_fv.NewMFVEncoder(params)
+
+	rotations := []int{1, 2, 3}
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys}, nil)
+
+	data := make([]uint64, slots)
+	for i := range data {
+		data[i] = uint64(i)
+	}
+
+	plaintext := ckks_fv.NewPlaintextFV(params)
+	encoder.EncodeUint(data, plaintext)
+	ciphertext := encryptor.EncryptNew(plaintext)
+
+	evaluator.ModSwitchMany(ciphertext, ciphertext, 2)
+
+	mat := make([]map[int][]uint64, 1)
+	mat[0] = make(map[int][]uint64)
+	mat[0][0] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		mat[0][0][i] = 1
+	}
+	mat[0][1] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		mat[0][1][i] = uint64(i)
+	}
+	mat[0][2] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		mat[0][2][i] = 0
+	}
+	mat[0][3] = make([]uint64, slots)
+	for i := 0; i < slots; i++ {
+		mat[0][3][i] = 2
+	}
+
+	level := ciphertext.Level()
+	ptDiagMatrixT := encoder.EncodeDiagMatrixT(level, mat[0], 16.0, params.LogSlots())
+	// fmt.Printf("ptDiagMatrixT.N1: %d\n", ptDiagMatrixT.N1)
+
+	res := evaluator.LinearTransform(ciphertext, ptDiagMatrixT)[0]
+	decrypted := decryptor.DecryptNew(res)
+	decoded := encoder.DecodeUintNew(decrypted)
+
+	fmt.Printf("Matrix multiplication in Zt for t = %d:\n", params.T())
+	if params.Slots() < params.N() {
+		A := make([][]uint64, slots)
+		for i := 0; i < slots; i++ {
+			A[i] = make([]uint64, slots)
+		}
+
+		for k := range mat[0] {
+			for i := 0; i < slots; i++ {
+				A[i][(i+k)%slots] = mat[0][k][i]
+			}
+		}
+
+		for i := 0; i < slots; i++ {
+			fmt.Printf("[ ")
+			for j := 0; j < slots; j++ {
+				fmt.Printf("%3d ", A[i][j])
+			}
+			fmt.Printf("]")
+			if i == slots/2-1 {
+				fmt.Printf("   |/  ")
+			} else if i == slots/2 {
+				fmt.Printf("  /|   ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]", data[i])
+
+			if i == slots/2-1 || i == slots/2 {
+				fmt.Printf("  ---  ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]\n", decoded[i])
+		}
+	} else {
+		l := slots / 2
+		A := make([][]uint64, l)
+		B := make([][]uint64, l)
+		for i := 0; i < l; i++ {
+			A[i] = make([]uint64, l)
+			B[i] = make([]uint64, l)
+		}
+
+		for k := range mat[0] {
+			for i := 0; i < l; i++ {
+				A[i][(i+k)%l] = mat[0][k][i]
+			}
+			for i := l; i < slots; i++ {
+				B[i-l][(i+k)%l] = mat[0][k][i]
+			}
+		}
+
+		for i := 0; i < l; i++ {
+			fmt.Printf("[ ")
+			for j := 0; j < l; j++ {
+				fmt.Printf("%3d ", A[i][j])
+			}
+			fmt.Printf("]")
+			if i == l/2-1 {
+				fmt.Printf("   |/  ")
+			} else if i == l/2 {
+				fmt.Printf("  /|   ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]", data[i])
+
+			if i == l/2-1 || i == l/2 {
+				fmt.Printf("  ---  ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]\n", decoded[i])
+		}
+		fmt.Println()
+
+		for i := 0; i < l; i++ {
+			fmt.Printf("[ ")
+			for j := 0; j < l; j++ {
+				fmt.Printf("%3d ", B[i][j])
+			}
+			fmt.Printf("]")
+			if i == l/2-1 {
+				fmt.Printf("   |/  ")
+			} else if i == l/2 {
+				fmt.Printf("  /|   ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]", data[i+l])
+
+			if i == l/2-1 || i == l/2 {
+				fmt.Printf("  ---  ")
+			} else {
+				fmt.Printf("       ")
+			}
+			fmt.Printf("[ %3d ]\n", decoded[i+l])
+		}
+	}
+}
+
 func fvStC() {
 	var params *ckks_fv.Parameters
 	// params = ckks_fv.DefaultParams[12]
@@ -575,12 +731,300 @@ func fvStC() {
 	}
 }
 
+func mfvStC() {
+	var params *ckks_fv.Parameters
+	// params = ckks_fv.DefaultParams[12]
+	params = ckks_fv.DefaultParams[13] // full batching
+	slots := params.Slots()
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+	encoder := ckks_fv.NewMFVEncoder(params)
+
+	rotations := []int{0, 1, 2, 3, 4, 12, 6, 8, 15}
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	pDcds := encoder.GenSlotToCoeffMatFV()
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys}, pDcds)
+
+	var plaintext, decrypted *ckks_fv.Plaintext
+	var ciphertext, res *ckks_fv.Ciphertext
+	var decoded []uint64
+
+	g := ring.PrimitiveRoot(params.T())
+	w := ring.ModExp(g, (int(params.T())-1)/(slots*2), params.T())
+
+	A := make([][]uint64, slots)
+	M := slots * 2
+	for i := range A {
+		A[i] = make([]uint64, slots)
+		for j := range A[i] {
+			if i < slots/2 {
+				A[i][j] = ring.ModExp(uint64(5), i, uint64(M)) * uint64(j) % uint64(M)
+			} else {
+				A[i][j] = (-ring.ModExp(uint64(5), i-slots/2, uint64(M)) * uint64(j)) % uint64(M)
+			}
+		}
+	}
+
+	for j := 0; j < slots; j++ {
+		fmt.Printf("[")
+		for i := 0; i < slots; i++ {
+			fmt.Printf("%5v ", ring.ModExp(w, int(A[i][utils.BitReverse64(uint64(j), uint64(params.LogSlots()))]), params.T()))
+		}
+		fmt.Println("]")
+	}
+	fmt.Println()
+	fmt.Println()
+
+	for i := 0; i < slots; i++ {
+		data := make([]uint64, slots)
+		data[i] = 1
+
+		plaintext = ckks_fv.NewPlaintextFV(params)
+		encoder.EncodeUint(data, plaintext)
+		ciphertext = encryptor.EncryptNew(plaintext)
+
+		res = evaluator.SlotsToCoeffs(ciphertext)
+		decrypted = decryptor.DecryptNew(res)
+		decoded = encoder.DecodeUintNew(decrypted)
+		fmt.Printf("%5v\n", decoded[:slots])
+	}
+}
+
+func MultiLevelFV() {
+	params := ckks_fv.DefaultFVParams[1]
+	encoder := ckks_fv.NewMFVEncoder(params)
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+
+	rlk := kgen.GenRelinearizationKey(sk)
+	rotIndex := make([]uint64, params.LogN())
+	for i := 0; i < params.LogN()-1; i++ {
+		rotIndex[i] = params.GaloisElementForColumnRotationBy(1 << i)
+	}
+	rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
+	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, nil)
+
+	N := params.N()
+	data1 := make([]uint64, N)
+	data2 := make([]uint64, N)
+	for i := 0; i < N; i++ {
+		data1[i] = uint64(2*i + 1)
+		data2[i] = params.T() - uint64(i+1)
+	}
+	innerSum1 := uint64(0)
+	innerSum2 := uint64(0)
+	for i := 0; i < N; i++ {
+		innerSum1 = (innerSum1 + data1[i]) % params.T()
+		innerSum2 = (innerSum2 + data2[i]) % params.T()
+	}
+
+	plaintext1 := ckks_fv.NewPlaintextFV(params)
+	plaintext2 := ckks_fv.NewPlaintextFV(params)
+	encoder.EncodeUint(data1, plaintext1)
+	encoder.EncodeUint(data2, plaintext2)
+
+	ciphertext1 := encryptor.EncryptNew(plaintext1)
+	ciphertext2 := encryptor.EncryptNew(plaintext2)
+
+	var ciphertext *ckks_fv.Ciphertext
+	ptMul := ckks_fv.NewPlaintextMul(params)
+	ptRt := ckks_fv.NewPlaintextRingT(params)
+	numPrint := 16
+
+	evaluator.ModSwitchMany(ciphertext1, ciphertext1, 2)
+	evaluator.ModSwitchMany(ciphertext2, ciphertext2, 2)
+
+	fmt.Println()
+	fmt.Println("Test ModSwitch")
+	printDec(ciphertext1, numPrint, decryptor, encoder)
+	printDec(ciphertext2, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test AddNew")
+	ciphertext = evaluator.AddNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test AddNoModNew")
+	ciphertext = evaluator.AddNoModNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test SubNew")
+	ciphertext = evaluator.SubNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test SubNoModNew")
+	ciphertext = evaluator.SubNoModNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test NegNew")
+	ciphertext = evaluator.NegNew(ciphertext1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test ReduceNew")
+	ciphertext = evaluator.AddNoModNew(ciphertext1, ciphertext2)
+	ciphertext = evaluator.ReduceNew(ciphertext)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test MulScalarNew")
+	ciphertext = evaluator.MulScalarNew(ciphertext1, 2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+	ciphertext = evaluator.MulScalarNew(ciphertext2, params.T()-1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test MulNew")
+	fmt.Println("1. PlaintextMul")
+	encoder.EncodeUintMul(data2, ptMul)
+	ciphertext = evaluator.MulNew(ciphertext1, ptMul)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println("2. PlaintextRingT")
+	encoder.EncodeUintRingT(data2, ptRt)
+	ciphertext = evaluator.MulNew(ciphertext1, ptRt)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println("3. Plaintext")
+	plaintext2 = decryptor.DecryptNew(ciphertext2)
+	ciphertext = evaluator.MulNew(ciphertext1, plaintext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println("4. Ciphertext")
+	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	ciphertext = evaluator.MulNew(ciphertext1, ciphertext1)
+	ciphertext = evaluator.MulNew(ciphertext, ciphertext)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test Relinearize New")
+	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
+	ciphertext = evaluator.RelinearizeNew(ciphertext)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test RotateColumnsNew")
+	ciphertext = evaluator.RotateColumnsNew(ciphertext1, 2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test RotateRowsNew")
+	ciphertext = evaluator.RotateRowsNew(ciphertext1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	fmt.Println()
+	fmt.Println("Test InnerSum")
+	evaluator.InnerSum(ciphertext1, ciphertext)
+	fmt.Printf("InnerSum1: %d\n", innerSum1)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+	evaluator.InnerSum(ciphertext2, ciphertext)
+	fmt.Printf("InnerSum2: %d\n", innerSum2)
+	printDec(ciphertext, numPrint, decryptor, encoder)
+
+}
+
+func printDec(ct0 *ckks_fv.Ciphertext, numPrint int, decryptor ckks_fv.MFVDecryptor, encoder ckks_fv.MFVEncoder) {
+	decrypted := decryptor.DecryptNew(ct0)
+	decoded := encoder.DecodeUintNew(decrypted)
+	fmt.Println("  Result:")
+	for i := 0; i < numPrint; i++ {
+		fmt.Printf("    res[%d]: %d\n", i, decoded[i])
+	}
+}
+
+func fvNoiseBudget() {
+	params := ckks_fv.DefaultFVParams[1]
+	encoder := ckks_fv.NewMFVEncoder(params)
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+	noiseEstimator := ckks_fv.NewMFVNoiseEstimator(params, sk)
+
+	rlk := kgen.GenRelinearizationKey(sk)
+	rotIndex := make([]uint64, params.LogN())
+	for i := 0; i < params.LogN()-1; i++ {
+		rotIndex[i] = params.GaloisElementForColumnRotationBy(1 << i)
+	}
+	rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
+	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, nil)
+
+	N := params.N()
+	data1 := make([]uint64, N)
+	data2 := make([]uint64, N)
+	for i := 0; i < N; i++ {
+		data1[i] = uint64(i)
+		data2[i] = params.T() - uint64(i+1)
+	}
+
+	plaintext1 := ckks_fv.NewPlaintextFV(params)
+	plaintext2 := ckks_fv.NewPlaintextFV(params)
+	encoder.EncodeUint(data1, plaintext1)
+	encoder.EncodeUint(data2, plaintext2)
+
+	ciphertext1 := encryptor.EncryptNew(plaintext1)
+	evaluator.ModSwitch(ciphertext1, ciphertext1)
+
+	var budget int
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+	evaluator.ModSwitch(ciphertext1, ciphertext1)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+	ciphertext1 = evaluator.MulNew(ciphertext1, ciphertext1)
+	evaluator.Relinearize(ciphertext1, ciphertext1)
+	budget = noiseEstimator.InvariantNoiseBudget(ciphertext1)
+	fmt.Printf("Noise budget: %d bits\n", budget)
+	printDec(ciphertext1, 16, decryptor, encoder)
+
+}
+
 func main() {
 	var input string
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2, 3, 4.\n"
+	choice := "Choose one of 0, 1, 2, 3, 4, 5, 6, 7.\n"
 	for true {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): Transciphering")
@@ -588,6 +1032,8 @@ func main() {
 		fmt.Println("  (3): RtF Framework")
 		fmt.Println("  (4): FV Linear Transform")
 		fmt.Println("  (5): FV SlotsToCoeff")
+		fmt.Println("  (6): Multi Level FV")
+		fmt.Println("  (7): FV Noise Estimate")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -607,10 +1053,18 @@ func main() {
 				RtF()
 			case 4:
 				fmt.Println()
-				fvLT()
+				// fvLT()
+				mfvLT()
 			case 5:
 				fmt.Println()
-				fvStC()
+				// fvStC()
+				mfvStC()
+			case 6:
+				fmt.Println()
+				MultiLevelFV()
+			case 7:
+				fmt.Println()
+				fvNoiseBudget()
 			default:
 				fmt.Println(choice)
 			}

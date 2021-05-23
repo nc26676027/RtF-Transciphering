@@ -195,3 +195,31 @@ func (r *Ring) Permute(polIn *Poly, gen uint64, polOut *Poly) {
 		}
 	}
 }
+
+// PermuteLvl applies the Galois transform on a polynomial outside of the NTT domain.
+// It maps the coefficients x^i to x^(gen*i)
+// It must be noted that the result cannot be in-place.
+func (r *Ring) PermuteLvl(level int, polIn *Poly, gen uint64, polOut *Poly) {
+
+	var mask, index, indexRaw, logN, tmp uint64
+
+	mask = uint64(r.N - 1)
+
+	logN = uint64(bits.Len64(mask))
+
+	for i := uint64(0); i < uint64(r.N); i++ {
+
+		indexRaw = i * gen
+
+		index = indexRaw & mask
+
+		tmp = (indexRaw >> logN) & 1
+
+		// for j, qi := range r.Modulus {
+		for j := 0; j < level+1; j++ {
+
+			qi := r.Modulus[j]
+			polOut.Coeffs[j][index] = polIn.Coeffs[j][i]*(tmp^1) | (qi-polIn.Coeffs[j][i])*tmp
+		}
+	}
+}
