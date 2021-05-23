@@ -1019,12 +1019,178 @@ func fvNoiseBudget() {
 
 }
 
+func smallBatchFV() {
+	params := ckks_fv.DefaultFVParams[1]
+	logFVSlots := 4
+	FVSlots := 1 << logFVSlots
+	params.SetLogFVSlots(logFVSlots)
+	fmt.Printf("params.logFVSlots: %d\n", params.LogFVSlots())
+	encoder := ckks_fv.NewEncoder(params)
+
+	kgen := ckks_fv.NewKeyGenerator(params)
+	sk, pk := kgen.GenKeyPair()
+	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
+	// noiseEstimator := ckks_fv.NewMFVNoiseEstimator(params, sk)
+
+	rlk := kgen.GenRelinearizationKey(sk)
+	// rotIndex := make([]uint64, params.LogN())
+	// for i := 0; i < params.LogN()-1; i++ {
+	// 	rotIndex[i] = params.GaloisElementForColumnRotationBy(1 << i)
+	// }
+	// rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
+	rots := []int{1, 2, 3, 4, 5, 6}
+	rotIndex := make([]uint64, len(rots))
+	for i := range rots {
+		rotIndex[i] = params.GaloisElementForColumnRotationBy(rots[i])
+	}
+	rotIndex = append(rotIndex, params.GaloisElementForRowRotation())
+	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
+	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, nil)
+
+	data1 := make([]uint64, FVSlots)
+	data2 := make([]uint64, FVSlots)
+	for i := range data1 {
+		data1[i] = uint64(i)
+		data2[i] = uint64(2 * i)
+	}
+
+	plaintext1 := ckks_fv.NewPlaintextFV(params)
+	plaintext2 := ckks_fv.NewPlaintextFV(params)
+	encoder.EncodeUintl(data1, plaintext1)
+	encoder.EncodeUintl(data2, plaintext2)
+
+	ciphertext1 := encryptor.EncryptNew(plaintext1)
+	ciphertext2 := encryptor.EncryptNew(plaintext2)
+
+	var ciphertext, tmp1, tmp2 *ckks_fv.Ciphertext
+	var decrypted *ckks_fv.Plaintext
+	var rot1, rot2 int
+	decoded := make([]uint64, FVSlots)
+	tmp1 = ckks_fv.NewCiphertextFV(params, 1)
+	tmp2 = ckks_fv.NewCiphertextFV(params, 1)
+
+	// Test Add
+	fmt.Println("Test Add")
+	ciphertext = evaluator.AddNew(ciphertext1, ciphertext2)
+	decrypted = decryptor.DecryptNew(ciphertext)
+	encoder.DecodeUintl(decrypted, decoded)
+	for i := 0; i < FVSlots; i++ {
+		sol := data1[i] + data2[i]
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+
+	// Test Mul + Relin
+	fmt.Println("Test Mul (+ Relin)")
+	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
+	evaluator.Relinearize(ciphertext, ciphertext)
+	decrypted = decryptor.DecryptNew(ciphertext)
+	encoder.DecodeUintl(decrypted, decoded)
+	for i := 0; i < FVSlots; i++ {
+		sol := (data1[i] * data2[i]) % params.T()
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+
+	// Test RotateColumns
+	fmt.Println("Test RotateColumns")
+	rot1 = 6
+	rot2 = 1
+	evaluator.RotateColumns(ciphertext1, rot1, tmp1)
+	evaluator.RotateColumns(ciphertext2, rot2, tmp2)
+	ciphertext = evaluator.AddNew(tmp1, tmp2)
+
+	decrypted = decryptor.DecryptNew(ciphertext)
+	encoder.DecodeUintl(decrypted, decoded)
+
+	for i := 0; i < FVSlots/2; i++ {
+		sol := data1[(i+rot1)%(FVSlots/2)] + data2[(i+rot2)%(FVSlots/2)]
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+
+	for i := FVSlots / 2; i < FVSlots; i++ {
+		sol := data1[FVSlots/2+(i+rot1)%(FVSlots/2)] + data2[FVSlots/2+(i+rot2)%(FVSlots/2)]
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+
+	// Test RotateRows
+	fmt.Println("Test RotateRows")
+	evaluator.RotateRows(ciphertext1, ciphertext)
+
+	decrypted = decryptor.DecryptNew(ciphertext)
+	encoder.DecodeUintl(decrypted, decoded)
+
+	for i := 0; i < FVSlots/2; i++ {
+		sol := data1[i+FVSlots/2]
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+
+	for i := FVSlots / 2; i < FVSlots; i++ {
+		sol := data1[i-FVSlots/2]
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+
+	fmt.Println("Linear Transform")
+	mat := make(map[int][]uint64)
+	mat[0] = make([]uint64, FVSlots)
+	for i := 0; i < FVSlots; i++ {
+		mat[0][i] = uint64(i)
+	}
+
+	mat[1] = make([]uint64, FVSlots)
+	for i := 0; i < FVSlots; i++ {
+		mat[1][i] = 2
+	}
+
+	mat[6] = make([]uint64, FVSlots)
+	for i := 0; i < FVSlots; i++ {
+		mat[6][i] = 1
+	}
+
+	ptDiagMatrixT := encoder.EncodeSmallDiagMatrixT(mat, 16, logFVSlots)
+	fmt.Printf("patDiagMatrixT.N1: %d\n", ptDiagMatrixT.N1)
+	res := evaluator.LinearTransform(ciphertext1, ptDiagMatrixT)[0]
+	decrypted = decryptor.DecryptNew(res)
+	encoder.DecodeUintl(decrypted, decoded)
+
+	for i := 0; i < FVSlots/2; i++ {
+		fmt.Printf("decoded[%d]: %d\n", i, decoded[i])
+	}
+	fmt.Println()
+	for i := FVSlots / 2; i < FVSlots; i++ {
+		fmt.Printf("decoded[%d]: %d\n", i, decoded[i])
+	}
+	fmt.Println()
+
+	fmt.Println("Decrypted coeffs")
+	decrypted = decryptor.DecryptNew(ciphertext1)
+	ptRt := ckks_fv.NewPlaintextRingT(params)
+	encoder.DecodeRingT(decrypted, ptRt)
+	for i := 0; i < params.N()/2; i++ {
+		j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+		coeffi := ptRt.Value()[0].Coeffs[0][j]
+		fmt.Printf("[%d] decrypted[%d]: %d\n", i, j, coeffi)
+	}
+	fmt.Println()
+	for i := 0; i < params.N()/2; i++ {
+		j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+		coeffi := ptRt.Value()[0].Coeffs[0][uint64(params.N()/2)+j]
+		fmt.Printf("[%d] decrypted[%d]: %d\n", i, j, coeffi)
+	}
+
+}
+
 func main() {
 	var input string
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2, 3, 4, 5, 6, 7.\n"
+	choice := "Choose one of 0, 1, 2, 3, 4, 5, 6, 7, 8.\n"
 	for true {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): Transciphering")
@@ -1034,6 +1200,7 @@ func main() {
 		fmt.Println("  (5): FV SlotsToCoeff")
 		fmt.Println("  (6): Multi Level FV")
 		fmt.Println("  (7): FV Noise Estimate")
+		fmt.Println("  (8): Small FV Batching")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -1065,6 +1232,9 @@ func main() {
 			case 7:
 				fmt.Println()
 				fvNoiseBudget()
+			case 8:
+				fmt.Println()
+				smallBatchFV()
 			default:
 				fmt.Println(choice)
 			}

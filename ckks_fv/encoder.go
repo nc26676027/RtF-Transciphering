@@ -39,6 +39,11 @@ type Encoder interface {
 	DecodeUintNew(pt interface{}) (coeffs []uint64)
 	DecodeIntNew(pt interface{}) (coeffs []int64)
 
+	EncodeUintRingTl(coeffs []uint64, pt *PlaintextRingT)
+	EncodeUintl(coeffs []uint64, p *Plaintext)
+	DecodeUintl(p interface{}, coeffs []uint64)
+	EncodeSmallDiagMatrixT(vector map[int][]uint64, maxN1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
+
 	// CKKS Encoding and Decoding
 	EncodeComplex(plaintext *Plaintext, values []complex128, logSlots int)
 	EncodeComplexNew(values []complex128, logSlots int) (plaintext *Plaintext)
@@ -94,6 +99,7 @@ type encoder struct {
 	ringQ  *ring.Ring
 	ringP  *ring.Ring
 	ringT  *ring.Ring
+	ringTl *ring.Ring
 
 	// ckks
 	bigintChain  []*big.Int
@@ -110,13 +116,15 @@ type encoder struct {
 	gaussianSampler *ring.GaussianSampler
 
 	// fv
-	indexMatrix []uint64
-	scaler      ring.Scaler
-	deltaMont   []uint64
-	deltaMontP  []uint64
+	indexMatrix  []uint64
+	indexMatrixl []uint64
+	scaler       ring.Scaler
+	deltaMont    []uint64
+	deltaMontP   []uint64
 
-	tmpPoly *ring.Poly
-	tmpPtRt *PlaintextRingT
+	tmpPoly      *ring.Poly
+	tmpPtRt      *PlaintextRingT
+	tmpSmallPoly *ring.Poly
 }
 
 type encoderComplex128 struct {
@@ -150,6 +158,13 @@ func newEncoder(params *Parameters) encoder {
 		panic(err)
 	}
 
+	var ringTl *ring.Ring
+	var tmpSmallPoly *ring.Poly
+	if ringTl, err = ring.NewRing(params.FVSlots(), []uint64{params.t}); err != nil {
+		panic(err)
+	}
+	tmpSmallPoly = ringTl.NewPoly()
+
 	rotGroup := make([]int, m>>1)
 	fivePows := 1
 	for i := 0; i < m>>2; i++ {
@@ -182,11 +197,28 @@ func newEncoder(params *Parameters) encoder {
 		pos &= (m - 1)
 	}
 
+	m = 2 * params.FVSlots()
+	indexMatrixl := make([]uint64, params.FVSlots())
+	logFVSlots := params.logFVSlots
+	rowSize = params.FVSlots() >> 1
+	pos = 1
+	for i := 0; i < rowSize; i++ {
+		index1 = (pos - 1) >> 1
+		index2 = (m - pos - 1) >> 1
+
+		indexMatrixl[i] = utils.BitReverse64(uint64(index1), uint64(logFVSlots))
+		indexMatrixl[i|rowSize] = utils.BitReverse64(uint64(index2), uint64(logFVSlots))
+
+		pos *= GaloisGen
+		pos &= (m - 1)
+	}
+
 	return encoder{
 		params:          params.Copy(),
 		ringQ:           q,
 		ringP:           p,
 		ringT:           ringT,
+		ringTl:          ringTl,
 		bigintChain:     genBigIntChain(params.qi),
 		bigintCoeffs:    make([]*big.Int, m>>1),
 		qHalf:           ring.NewUint(0),
@@ -195,11 +227,13 @@ func newEncoder(params *Parameters) encoder {
 		rotGroup:        rotGroup,
 		gaussianSampler: gaussianSampler,
 		indexMatrix:     indexMatrix,
+		indexMatrixl:    indexMatrixl,
 		scaler:          ring.NewRNSScaler(params.t, q),
 		deltaMont:       GenLiftParams(q, params.t),
 		deltaMontP:      deltaMontP,
 		tmpPoly:         ringT.NewPoly(),
 		tmpPtRt:         NewPlaintextRingT(params),
+		tmpSmallPoly:    tmpSmallPoly,
 	}
 }
 
@@ -263,6 +297,27 @@ func (encoder *encoder) EncodeUintRingT(coeffs []uint64, p *PlaintextRingT) {
 	encoder.ringT.InvNTT(p.value, p.value)
 }
 
+func (encoder *encoder) EncodeUintRingTl(coeffs []uint64, p *PlaintextRingT) {
+	if len(coeffs) != len(encoder.indexMatrixl) {
+		panic("invalid input to encode: number of coefficients must be equal to the number of slots")
+	}
+
+	if len(p.value.Coeffs[0]) != len(encoder.indexMatrix) {
+		panic("invalid plaintext to receive encoding: number of coefficients does not match the ring degree")
+	}
+
+	poly := encoder.tmpSmallPoly
+	for i := 0; i < len(coeffs); i++ {
+		poly.Coeffs[0][encoder.indexMatrixl[i]] = coeffs[i]
+	}
+	encoder.ringTl.InvNTT(poly, poly)
+
+	gap := 1 << (encoder.params.logN - encoder.params.logFVSlots)
+	for i := 0; i < len(coeffs); i++ {
+		p.value.Coeffs[0][i*gap] = poly.Coeffs[0][i]
+	}
+}
+
 // EncodeUint encodes an uint64 slice of size at most N on a plaintext.
 func (encoder *encoder) EncodeUint(coeffs []uint64, p *Plaintext) {
 	ptRt := &PlaintextRingT{p.Element, p.Element.value[0]}
@@ -271,6 +326,14 @@ func (encoder *encoder) EncodeUint(coeffs []uint64, p *Plaintext) {
 	encoder.EncodeUintRingT(coeffs, ptRt)
 
 	// Scales by Q/t
+	encoder.FVScaleUp(ptRt, p)
+}
+
+func (encoder *encoder) EncodeUintl(coeffs []uint64, p *Plaintext) {
+	ptRt := &PlaintextRingT{p.Element, p.Element.value[0]}
+
+	encoder.EncodeUintRingTl(coeffs, ptRt)
+
 	encoder.FVScaleUp(ptRt, p)
 }
 
@@ -427,6 +490,27 @@ func (encoder *encoder) DecodeUintNew(p interface{}) (coeffs []uint64) {
 	coeffs = make([]uint64, encoder.ringQ.N)
 	encoder.DecodeUint(p, coeffs)
 	return
+}
+
+func (encoder *encoder) DecodeUintl(p interface{}, coeffs []uint64) {
+	var ptRt *PlaintextRingT
+	var isInRingT bool
+	if ptRt, isInRingT = p.(*PlaintextRingT); !isInRingT {
+		encoder.DecodeRingT(p, encoder.tmpPtRt)
+		ptRt = encoder.tmpPtRt
+	}
+
+	poly := encoder.tmpSmallPoly
+	gap := 1 << (encoder.params.logN - encoder.params.logFVSlots)
+	for i := 0; i < encoder.params.FVSlots(); i++ {
+		poly.Coeffs[0][i] = ptRt.value.Coeffs[0][i*gap]
+	}
+
+	encoder.ringTl.NTT(poly, poly)
+
+	for i := 0; i < encoder.params.FVSlots(); i++ {
+		coeffs[i] = poly.Coeffs[0][encoder.indexMatrixl[i]]
+	}
 }
 
 // DecodeInt decodes a any plaintext type and write the coefficients in coeffs. It also decodes the sign
@@ -827,6 +911,86 @@ func (encoder *encoderComplex128) encodeDiagonalT(logSlots int, m []uint64) [2]*
 		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i%len(m)]
 	}
 	ringT.InvNTT(mT, mT)
+
+	// RingTToMulRingQ
+	mQ := ringQ.NewPoly()
+	for i := 0; i < len(encoder.ringQ.Modulus); i++ {
+		copy(mQ.Coeffs[i], mT.Coeffs[0])
+	}
+	ringQ.NTTLazy(mQ, mQ)
+	ringQ.MForm(mQ, mQ)
+
+	// RingTToMulRingP
+	mP := ringP.NewPoly()
+	for i := 0; i < len(encoder.ringP.Modulus); i++ {
+		copy(mP.Coeffs[i], mT.Coeffs[0])
+	}
+	ringP.NTTLazy(mP, mP)
+	ringP.MForm(mP, mP)
+
+	return [2]*ring.Poly{mQ, mP}
+}
+
+func (encoder *encoderComplex128) EncodeSmallDiagMatrixT(diagMatrix map[int][]uint64, maxM1N2Ratio float64, logFVSlots int) (matrix *PtDiagMatrixT) {
+	matrix = new(PtDiagMatrixT)
+	matrix.LogSlots = logFVSlots
+	fvSlots := 1 << logFVSlots
+
+	if len(diagMatrix) > 2 {
+		// N1*N2 = N
+		N1 := findbestbabygiantstepsplit(diagMatrix, fvSlots, maxM1N2Ratio)
+		matrix.N1 = N1
+
+		index, _ := bsgsIndex(diagMatrix, fvSlots, N1)
+
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for j := range index {
+			for _, i := range index[j] {
+				// manages inputs that have rotation between 0 and slots-1 or between -slots/2 and slots/2-1
+				v := diagMatrix[N1*j+i]
+				if len(v) == 0 {
+					v = diagMatrix[(N1*j+i)-fvSlots]
+				}
+
+				matrix.Vec[N1*j+i] = encoder.encodeSmallDiagonalT(logFVSlots, rotateSmallT(v, -N1*j))
+			}
+		}
+	} else {
+		matrix.Vec = make(map[int][2]*ring.Poly)
+
+		for i := range diagMatrix {
+			idx := i
+			if idx < 0 {
+				idx += fvSlots
+			}
+			matrix.Vec[idx] = encoder.encodeSmallDiagonalT(logFVSlots, diagMatrix[i])
+		}
+
+		matrix.naive = true
+	}
+
+	return
+}
+
+func (encoder *encoderComplex128) encodeSmallDiagonalT(logFVSlots int, m []uint64) [2]*ring.Poly {
+	ringQ := encoder.ringQ
+	ringP := encoder.ringP
+	ringT := encoder.ringT
+	ringTl := encoder.ringTl
+	tmp := encoder.tmpSmallPoly
+
+	// EncodeUintRingT
+	for i := 0; i < len(m); i++ {
+		tmp.Coeffs[0][encoder.indexMatrixl[i]] = m[i]
+	}
+	ringTl.InvNTT(tmp, tmp)
+
+	mT := ringT.NewPoly()
+	gap := 1 << (encoder.params.logN - logFVSlots)
+	for i := 0; i < (1 << logFVSlots); i++ {
+		mT.Coeffs[0][i*gap] = tmp.Coeffs[0][i]
+	}
 
 	// RingTToMulRingQ
 	mQ := ringQ.NewPoly()

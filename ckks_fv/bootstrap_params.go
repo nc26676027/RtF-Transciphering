@@ -1116,6 +1116,19 @@ func rotateT(x []uint64, n int, isFullSlots bool) (y []uint64) {
 	return
 }
 
+func rotateSmallT(x []uint64, n int) (y []uint64) {
+	y = make([]uint64, len(x))
+	mask := int(len(x)/2 - 1)
+	for i := 0; i < len(x)/2; i++ {
+		y[i] = x[(i+n)&mask]
+	}
+	for i := len(x) / 2; i < len(x); i++ {
+		y[i] = x[(i+n)&mask+len(x)/2]
+	}
+
+	return
+}
+
 func rotate(x []complex128, n int) (y []complex128) {
 
 	y = make([]complex128, len(x))

@@ -364,13 +364,14 @@ func (m *LogModuli) Copy() LogModuli {
 
 // Parameters represents a given parameter set for the CKKS cryptosystem.
 type Parameters struct {
-	qi       []uint64
-	pi       []uint64
-	t        uint64
-	logN     int // Ring degree (power of 2)
-	logSlots int
-	scale    float64
-	sigma    float64 // Gaussian sampling variance
+	qi         []uint64
+	pi         []uint64
+	t          uint64
+	logN       int // Ring degree (power of 2)
+	logSlots   int
+	logFVSlots int
+	scale      float64
+	sigma      float64 // Gaussian sampling variance
 }
 
 // NewParametersFromModuli creates a new Parameters struct and returns a pointer to it.
@@ -471,6 +472,16 @@ func (p *Parameters) MaxLogSlots() int {
 	return p.logN - 1
 }
 
+// LogFVSlots returns the log of the FV plaintext slots
+func (p *Parameters) LogFVSlots() int {
+	return p.logFVSlots
+}
+
+// FVSlots returns number of FV plaintext slots
+func (p *Parameters) FVSlots() int {
+	return 1 << p.logFVSlots
+}
+
 // Sigma returns standard deviation of the noise distribution
 func (p *Parameters) Sigma() float64 {
 	return p.sigma
@@ -505,6 +516,15 @@ func (p *Parameters) SetLogSlots(logSlots int) {
 	}
 
 	p.logSlots = logSlots
+}
+
+// SetFVLogSlots sets the value logFVSlots of the parameters.
+func (p *Parameters) SetLogFVSlots(logFVSlots int) {
+	if (logFVSlots == 0) || (logFVSlots > p.logN) {
+		panic(fmt.Errorf("logFVSlots cannot be greater than logN"))
+	}
+
+	p.logFVSlots = logFVSlots
 }
 
 // SetSigma sets the value sigma of the parameters
@@ -715,6 +735,7 @@ func (p *Parameters) Copy() (paramsCopy *Parameters) {
 	paramsCopy.logN = p.logN
 	paramsCopy.t = p.t
 	paramsCopy.logSlots = p.logSlots
+	paramsCopy.logFVSlots = p.logFVSlots
 	paramsCopy.scale = p.scale
 	paramsCopy.sigma = p.sigma
 	paramsCopy.qi = make([]uint64, len(p.qi))
