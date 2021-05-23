@@ -75,6 +75,7 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext) (ct0, ct1 *Ciphertext) {
 	if err := hbtp.ckksEvaluator.RescaleMany(ct0, 1, ct0); err != nil {
 		panic(err)
 	}
+
 	hbtp.ckksEvaluator.MultByConst(ct1, hbtp.diffScaleAfterSineEval, ct1)
 	if err := hbtp.ckksEvaluator.RescaleMany(ct1, 1, ct1); err != nil {
 		panic(err)

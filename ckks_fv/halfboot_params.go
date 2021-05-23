@@ -10,6 +10,7 @@ type HalfBootParameters struct {
 	ResidualModuli
 	KeySwitchModuli
 	SineEvalModuli
+	DiffScaleModulus
 	CoeffsToSlotsModuli
 	LogN         int
 	LogSlots     int
@@ -28,7 +29,8 @@ type HalfBootParameters struct {
 
 // Params generates a new set of Parameters from the HalfBootParameters
 func (hb *HalfBootParameters) Params() (p *Parameters, err error) {
-	Qi := append(hb.ResidualModuli, hb.SineEvalModuli.Qi...)
+	Qi := append(hb.ResidualModuli, hb.DiffScaleModulus...)
+	Qi = append(Qi, hb.SineEvalModuli.Qi...)
 	Qi = append(Qi, hb.CoeffsToSlotsModuli.Qi...)
 
 	if p, err = NewParametersFromModuli(hb.LogN, &Moduli{Qi, hb.KeySwitchModuli}, hb.t); err != nil {
@@ -82,12 +84,19 @@ func (hb *HalfBootParameters) Copy() *HalfBootParameters {
 	copy(paramsCopy.SineEvalModuli.Qi, hb.SineEvalModuli.Qi)
 	paramsCopy.SineEvalModuli.ScalingFactor = hb.SineEvalModuli.ScalingFactor
 
+	// DiffScaelModulus
+	paramsCopy.DiffScaleModulus = make([]uint64, 1)
+	copy(paramsCopy.DiffScaleModulus, hb.DiffScaleModulus)
+
 	return paramsCopy
 }
 
+// DiffScaleModulus is used to set scale after the SineEval step.
+type DiffScaleModulus []uint64
+
 // MaxLevel returns the maximum level of the halfboot parameters
 func (hb *HalfBootParameters) MaxLevel() int {
-	return len(hb.ResidualModuli) + len(hb.CoeffsToSlotsModuli.Qi) + len(hb.SineEvalModuli.Qi) - 1
+	return len(hb.ResidualModuli) + len(hb.DiffScaleModulus) + len(hb.CoeffsToSlotsModuli.Qi) + len(hb.SineEvalModuli.Qi) - 1
 }
 
 // SineEvalDepth returns the depth of the SineEval. If true, then also
@@ -271,6 +280,9 @@ var DefaultHalfBootParams = []*HalfBootParameters{
 			0x1fffffffff500001, // Pi 61
 			0x1fffffffff420001, // Pi 61
 		},
+		DiffScaleModulus: []uint64{
+			0x7fffe60001, // 39
+		},
 		// SlotsToCoeffsModuli: SlotsToCoeffsModuli{
 		// 	Qi: []uint64{
 		// 		0x7fffe60001, // 39 StC
@@ -341,6 +353,9 @@ var DefaultHalfBootParams = []*HalfBootParameters{
 			0x1fffffffffc80001, // Pi 61
 			0x1fffffffffb40001, // Pi 61
 			0x1fffffffff500001, // Pi 61
+		},
+		DiffScaleModulus: []uint64{
+			0x3ffffe80001, // 42
 		},
 		// SlotsToCoeffsModuli: SlotsToCoeffsModuli{
 		// 	Qi: []uint64{
@@ -419,6 +434,9 @@ var DefaultHalfBootParams = []*HalfBootParameters{
 			0x1fffffffff500001, // Pi 61
 			0x1fffffffff420001, // Pi 61
 		},
+		DiffScaleModulus: []uint64{
+			0x40020001, // 30
+		},
 		// SlotsToCoeffsModuli: SlotsToCoeffsModuli{
 		// 	Qi: []uint64{
 		// 		0x1000000000b00001, // 60 StC  (30)
@@ -494,6 +512,9 @@ var DefaultHalfBootParams = []*HalfBootParameters{
 			0x1fffffffff420001, // Pi 61
 			0x1fffffffff380001, // Pi 61
 		},
+		DiffScaleModulus: []uint64{
+			0xffa0001, // 28
+		},
 		// SlotsToCoeffsModuli: SlotsToCoeffsModuli{
 		// 	Qi: []uint64{
 		// 		0x100000000060001, // 56 StC (28 + 28)
@@ -561,6 +582,9 @@ var DefaultHalfBootParams = []*HalfBootParameters{
 		KeySwitchModuli: []uint64{
 			0x7fffffffe0001, // 51
 			0x8000000110001, // 51
+		},
+		DiffScaleModulus: []uint64{
+			0x40020001, // 30
 		},
 		// SlotsToCoeffsModuli: SlotsToCoeffsModuli{
 		// 	Qi: []uint64{
