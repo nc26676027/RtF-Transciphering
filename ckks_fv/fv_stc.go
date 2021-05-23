@@ -37,7 +37,6 @@ func (params *Parameters) GenSlotToCoeffMatFV(encoder Encoder) (pDcd []*PtDiagMa
 func genDcdMats(logSlots int, t uint64) (plainVector []map[int][]uint64) {
 	// var nttLevel, depth, nextnttLevel int
 
-	fmt.Printf("genDcdMats: %d\n", logSlots)
 	plainVector = make([]map[int][]uint64, logSlots+1)
 	roots := computePrimitiveRoots(1<<(logSlots+1), t)
 	diabMats := genDcdDiabDecomp(logSlots, roots)

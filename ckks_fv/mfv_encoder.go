@@ -435,8 +435,6 @@ func (encoder *mfvEncoder) encodeDiagonalT(level int, logSlots int, m []uint64) 
 	// EncodeUintRingT
 	mT := ringT.NewPoly()
 	for i := 0; i < len(m); i++ {
-		fmt.Printf("indexMatLen : %d    ind : %d\n", len(encoder.indexMatrix), i)
-		fmt.Printf("%d, %d\n", encoder.indexMatrix[i], i)
 		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i]
 	}
 	for i := len(m); i < len(encoder.indexMatrix); i++ {

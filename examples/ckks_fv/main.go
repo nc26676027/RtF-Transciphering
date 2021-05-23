@@ -734,7 +734,7 @@ func fvStC() {
 func mfvStC() {
 	var params *ckks_fv.Parameters
 	// params = ckks_fv.DefaultParams[12]
-	params = ckks_fv.DefaultParams[12] // full batching
+	params = ckks_fv.DefaultParams[13] // full batching
 	slots := params.Slots()
 
 	kgen := ckks_fv.NewKeyGenerator(params)
@@ -1040,14 +1040,8 @@ func smallBatchFV() {
 	sk, pk := kgen.GenKeyPair()
 	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
 	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
-	// noiseEstimator := ckks_fv.NewMFVNoiseEstimator(params, sk)
 
 	rlk := kgen.GenRelinearizationKey(sk)
-	// rotIndex := make([]uint64, params.LogN())
-	// for i := 0; i < params.LogN()-1; i++ {
-	// 	rotIndex[i] = params.GaloisElementForColumnRotationBy(1 << i)
-	// }
-	// rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
 	rots := []int{1, 2, 3, 4, 5, 6}
 	rotIndex := make([]uint64, len(rots))
 	for i := range rots {
