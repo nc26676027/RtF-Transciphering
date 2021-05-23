@@ -1,6 +1,8 @@
 package ckks_fv
 
 import (
+	"fmt"
+
 	"github.com/ldsec/lattigo/v2/ring"
 )
 
@@ -22,7 +24,8 @@ func (ev *fvEvaluator) SlotsToCoeffs(ct *Ciphertext) *Ciphertext {
 
 func (params *Parameters) GenSlotToCoeffMatFV(encoder Encoder) (pDcd []*PtDiagMatrixT) {
 	pDcd = make([]*PtDiagMatrixT, params.logSlots+1)
-	pVecDcd := genDcdMats(params.logN, params.logSlots, params.t)
+	fmt.Printf("sadfadfds: %d, %d\n", params.logN, params.logSlots)
+	pVecDcd := genDcdMats(params.logSlots, params.t)
 
 	for i := 0; i < len(pDcd); i++ {
 		pDcd[i] = encoder.EncodeDiagMatrixT(pVecDcd[i], 16.0, params.logSlots)
@@ -31,9 +34,10 @@ func (params *Parameters) GenSlotToCoeffMatFV(encoder Encoder) (pDcd []*PtDiagMa
 	return
 }
 
-func genDcdMats(logN, logSlots int, t uint64) (plainVector []map[int][]uint64) {
+func genDcdMats(logSlots int, t uint64) (plainVector []map[int][]uint64) {
 	// var nttLevel, depth, nextnttLevel int
 
+	fmt.Printf("genDcdMats: %d\n", logSlots)
 	plainVector = make([]map[int][]uint64, logSlots+1)
 	roots := computePrimitiveRoots(1<<(logSlots+1), t)
 	diabMats := genDcdDiabDecomp(logSlots, roots)

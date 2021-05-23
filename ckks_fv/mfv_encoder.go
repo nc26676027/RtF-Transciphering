@@ -435,6 +435,8 @@ func (encoder *mfvEncoder) encodeDiagonalT(level int, logSlots int, m []uint64) 
 	// EncodeUintRingT
 	mT := ringT.NewPoly()
 	for i := 0; i < len(m); i++ {
+		fmt.Printf("indexMatLen : %d    ind : %d\n", len(encoder.indexMatrix), i)
+		fmt.Printf("%d, %d\n", encoder.indexMatrix[i], i)
 		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i]
 	}
 	for i := len(m); i < len(encoder.indexMatrix); i++ {
@@ -463,19 +465,13 @@ func (encoder *mfvEncoder) encodeDiagonalT(level int, logSlots int, m []uint64) 
 
 func (encoder *mfvEncoder) GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT) {
 	params := encoder.params
-	fullBatch := params.logSlots == params.logN
-	depth := params.logSlots
-
-	if fullBatch {
-		depth += 1
-	}
 
 	modCount := len(params.qi)
 	pDcds = make([][]*PtDiagMatrixT, modCount)
 
 	for level := 0; level < modCount; level++ {
-		pDcds[level] = make([]*PtDiagMatrixT, depth)
-		pVecDcd := genDcdMats(params.logSlots, depth, params.t, fullBatch)
+		pDcds[level] = make([]*PtDiagMatrixT, params.logSlots+1)
+		pVecDcd := genDcdMats(params.logSlots, params.t)
 
 		for i := 0; i < len(pDcds[level]); i++ {
 			pDcds[level][i] = encoder.EncodeDiagMatrixT(level, pVecDcd[i], 16.0, params.logSlots)

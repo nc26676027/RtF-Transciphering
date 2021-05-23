@@ -734,7 +734,7 @@ func fvStC() {
 func mfvStC() {
 	var params *ckks_fv.Parameters
 	// params = ckks_fv.DefaultParams[12]
-	params = ckks_fv.DefaultParams[13] // full batching
+	params = ckks_fv.DefaultParams[12] // full batching
 	slots := params.Slots()
 
 	kgen := ckks_fv.NewKeyGenerator(params)
@@ -743,12 +743,15 @@ func mfvStC() {
 	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
 	encoder := ckks_fv.NewMFVEncoder(params)
 
-	rotations := []int{0, 1, 2, 3, 4, 12, 6, 8, 15}
+	rotations := make([]int, params.N()/2)
+	for i := 0; i < params.N()/2; i++ {
+		rotations[i] = i
+	}
 	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
 	pDcds := encoder.GenSlotToCoeffMatFV()
 	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys}, pDcds)
 
-	var plaintext, decrypted *ckks_fv.Plaintext
+	var plaintext *ckks_fv.Plaintext
 	var ciphertext, res *ckks_fv.Ciphertext
 	var decoded []uint64
 
@@ -787,10 +790,16 @@ func mfvStC() {
 		ciphertext = encryptor.EncryptNew(plaintext)
 
 		res = evaluator.SlotsToCoeffs(ciphertext)
-		decrypted = decryptor.DecryptNew(res)
-		decoded = encoder.DecodeUintNew(decrypted)
-		fmt.Printf("%5v\n", decoded[:slots])
+		decrypted1 := decryptor.DecryptNew(res)
+		decrypted2 := decryptor.DecryptNew(res)
+
+		ptRt := ckks_fv.NewPlaintextRingT(params)
+		encoder.DecodeRingT(decrypted1, ptRt)
+		fmt.Printf("%5v\n", *ptRt.Element.Value()[0])
+		decoded = encoder.DecodeUintNew(decrypted2)
+		// fmt.Printf("%5v\n", decoded)
 	}
+	_ = decoded
 }
 
 func MultiLevelFV() {
