@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/ldsec/lattigo/v2/ckks_fv"
-	"github.com/ldsec/lattigo/v2/ring"
 	"github.com/ldsec/lattigo/v2/utils"
 )
 
@@ -30,143 +29,13 @@ func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valu
 	return
 }
 
-func transciphering() {
-	fmt.Println("==== Transciphering ====")
-	// Set parameters
-	params := ckks_fv.DefaultParams[ckks_fv.PN15QP880]
-	params.SetT(0xffd0001) // 28-bit
-	ckksScale := float64(params.T()) / (1 << 3)
-	params.SetScale(ckksScale)
-
-	fmt.Println()
-	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
-
-	qi := params.Qi()
-
-	// Key generation
-	kgen := ckks_fv.NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPairSparse(64)
-	rlk := kgen.GenRelinearizationKey(sk)
-
-	encoder := ckks_fv.NewEncoder(params)
-	fvEncryptor := ckks_fv.NewFVEncryptorFromPk(params, pk)
-	fvEvaluator := ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{})
-	ckksEvaluator := ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk})
-	ckksDecryptor := ckks_fv.NewCKKSDecryptor(params, sk)
-
-	// Set data
-	ckksData := make([]complex128, params.Slots())
-	for i := range ckksData {
-		ckksData[i] = complex(utils.RandFloat64(0, 1), 0)
+func printDec(ct0 *ckks_fv.Ciphertext, numPrint int, decryptor ckks_fv.MFVDecryptor, encoder ckks_fv.MFVEncoder) {
+	decrypted := decryptor.DecryptNew(ct0)
+	decoded := encoder.DecodeUintNew(decrypted)
+	fmt.Println("  Result:")
+	for i := 0; i < numPrint; i++ {
+		fmt.Printf("    res[%d]: %d\n", i, decoded[i])
 	}
-
-	// CKKS Plaintext to FV Plaintext
-	plainCKKSRingT := encoder.EncodeComplexRingTNew(ckksData, params.LogSlots())
-	plainCKKS := ckks_fv.NewPlaintextFV(params)
-	encoder.FVScaleUp(plainCKKSRingT, plainCKKS)
-
-	// FV Encryption
-	cipherFV := fvEncryptor.EncryptNew(plainCKKS)
-
-	// Transform to NTT
-	fvEvaluator.TransformToNTT(cipherFV, cipherFV)
-
-	// Rescale
-	ckksEvaluator.RescaleMany(cipherFV, cipherFV.Level(), cipherFV)
-	cipherFV.SetScale(ckksScale * float64(qi[0]) / float64(params.T()))
-
-	// CKKS ciphertext precision
-	printDebug(params, cipherFV, ckksData, ckksDecryptor, encoder)
-}
-
-func transcipheringWithBoot() {
-	fmt.Println("==== Transciphering with Bootstrapping ====")
-
-	var err error
-	var btp *ckks_fv.Bootstrapper
-	var kgen ckks_fv.KeyGenerator
-	var encoder ckks_fv.Encoder
-	var sk *ckks_fv.SecretKey
-	var pk *ckks_fv.PublicKey
-	var fvEncryptor ckks_fv.FVEncryptor
-	var ckksDecryptor ckks_fv.CKKSDecryptor
-	var fvEvaluator ckks_fv.FVEvaluator
-	var ckksEvaluator ckks_fv.CKKSEvaluator
-
-	// Bootstrapping parameters
-	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
-	// are available in github.com/ldsec/lattigo/v2/ckks/bootstrap_params
-	// LogSlots is hardcoded to 15 in the parameters, but can be changed from 1 to 15.
-	// When changing logSlots make sure that the number of levels allocated to CtS and StC is
-	// smaller or equal to logSlots.
-
-	btpParams := ckks_fv.DefaultBootstrapParams[0]
-	params, err := btpParams.Params()
-	if err != nil {
-		panic(err)
-	}
-
-	ckksScale := float64(params.T()) / (1 << 10)
-	params.SetScale(ckksScale)
-
-	fmt.Println()
-	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), btpParams.H, params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
-
-	// Scheme context and keys
-	kgen = ckks_fv.NewKeyGenerator(params)
-
-	sk, pk = kgen.GenKeyPairSparse(btpParams.H)
-
-	encoder = ckks_fv.NewEncoder(params)
-	fvEncryptor = ckks_fv.NewFVEncryptorFromPk(params, pk)
-	fvEvaluator = ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{})
-	ckksEvaluator = ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{})
-	ckksDecryptor = ckks_fv.NewCKKSDecryptor(params, sk)
-
-	fmt.Println()
-	fmt.Println("Generating bootstrapping keys...")
-	rotations := kgen.GenRotationIndexesForBootstrapping(params.LogSlots(), btpParams)
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	rlk := kgen.GenRelinearizationKey(sk)
-	btpKey := ckks_fv.BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
-	if btp, err = ckks_fv.NewBootstrapper(params, btpParams, btpKey); err != nil {
-		panic(err)
-	}
-	fmt.Println("Done")
-
-	// Generate a random plaintext
-	ckksData := make([]complex128, params.Slots())
-	for i := range ckksData {
-		ckksData[i] = utils.RandComplex128(-1, 1)
-	}
-
-	plainCKKSRingT := encoder.EncodeComplexRingTNew(ckksData, params.LogSlots())
-	plainCKKS := ckks_fv.NewPlaintextFV(params)
-	encoder.FVScaleUp(plainCKKSRingT, plainCKKS)
-
-	// FV Encryption
-	cipherFV := fvEncryptor.EncryptNew(plainCKKS)
-
-	// Transform to NTT
-	fvEvaluator.TransformToNTT(cipherFV, cipherFV)
-
-	// Rescale
-	ckksEvaluator.RescaleMany(cipherFV, cipherFV.Level(), cipherFV)
-	cipherFV.SetScale(ckksScale * float64(params.Qi()[0]) / float64(params.T()))
-
-	// CKKS ciphertext precision
-	printDebug(params, cipherFV, ckksData, ckksDecryptor, encoder)
-
-	// Bootstrapping
-	fmt.Println()
-	fmt.Println("Bootstrapping...")
-	cipherBoot := btp.Bootstrapp(cipherFV)
-	fmt.Println("Done")
-
-	// Decrypt, print and compare with the plaintext values
-	fmt.Println()
-	fmt.Println("Precision of ciphertext vs. Bootstrapp(ciphertext)")
-	printDebug(params, cipherBoot, ckksData, ckksDecryptor, encoder)
 }
 
 func RtF() {
@@ -175,12 +44,13 @@ func RtF() {
 
 	var hbtp *ckks_fv.HalfBootstrapper
 	var kgen ckks_fv.KeyGenerator
-	var encoder ckks_fv.Encoder
+	var fvEncoder ckks_fv.MFVEncoder
+	var ckksEncoder ckks_fv.Encoder
 	var sk *ckks_fv.SecretKey
 	var pk *ckks_fv.PublicKey
-	var fvEncryptor ckks_fv.FVEncryptor
+	var fvEncryptor ckks_fv.MFVEncryptor
 	var ckksDecryptor ckks_fv.CKKSDecryptor
-	var fvEvaluator ckks_fv.FVEvaluator
+	var fvEvaluator ckks_fv.MFVEvaluator
 	var ckksEvaluator ckks_fv.CKKSEvaluator
 	var plainCKKSRingT *ckks_fv.PlaintextRingT
 	var plaintext *ckks_fv.Plaintext
@@ -192,17 +62,14 @@ func RtF() {
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.DefaultHalfBootParams[2]
+	hbtpParams := ckks_fv.DefaultHalfBootParams[0]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
 	}
-
-	fvParams := ckks_fv.DefaultParams[9]
-	if params.Qi()[0] != fvParams.Qi()[0] {
-		panic("Q0 does not match")
-	}
-	fvParams.SetT(params.T())
+	params.SetLogFVSlots(params.LogN())
+	messageScaling := float64(params.T()) / (2 * hbtpParams.MessageRatio)
+	// messageScaling := float64(params.T()) / float64(1<<11)
 
 	fmt.Println()
 	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), hbtpParams.H, params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
@@ -212,8 +79,9 @@ func RtF() {
 
 	sk, pk = kgen.GenKeyPairSparse(hbtpParams.H)
 
-	encoder = ckks_fv.NewEncoder(params)
-	fvEncryptor = ckks_fv.NewFVEncryptorFromPk(params, pk)
+	fvEncoder = ckks_fv.NewMFVEncoder(params)
+	ckksEncoder = ckks_fv.NewEncoder(params)
+	fvEncryptor = ckks_fv.NewMFVEncryptorFromPk(params, pk)
 	ckksDecryptor = ckks_fv.NewCKKSDecryptor(params, sk)
 
 	fmt.Println()
@@ -227,7 +95,7 @@ func RtF() {
 		panic(err)
 	}
 	fmt.Println("Done")
-	fvEvaluator = ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{})
+	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{}, nil)
 	ckksEvaluator = ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
 
 	// Encode float data added by keystream to plaintext coefficients
@@ -237,7 +105,7 @@ func RtF() {
 	var keystream []uint64
 	coeffs := make([]float64, params.N())
 
-	fullCoeffs := false
+	fullCoeffs := true
 	fullCoeffs = fullCoeffs && (params.LogN() == params.LogSlots()+1)
 	if fullCoeffs {
 		data = make([]float64, params.N())
@@ -253,7 +121,7 @@ func RtF() {
 			coeffs[uint64(params.N()/2)+j] = data[i+params.N()/2]
 		}
 
-		plainCKKSRingT = encoder.EncodeCoeffsRingTNew(coeffs, float64(params.T()/(1<<11)))
+		plainCKKSRingT = ckksEncoder.EncodeCoeffsRingTNew(coeffs, messageScaling)
 		poly := plainCKKSRingT.Value()[0]
 		for i := 0; i < params.N()/2; i++ {
 			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
@@ -274,7 +142,7 @@ func RtF() {
 			coeffs[j] = data[i]
 		}
 
-		plainCKKSRingT = encoder.EncodeCoeffsRingTNew(coeffs, float64(params.T()/(1<<11)))
+		plainCKKSRingT = ckksEncoder.EncodeCoeffsRingTNew(coeffs, messageScaling)
 		poly := plainCKKSRingT.Value()[0]
 		for i := 0; i < params.Slots(); i++ {
 			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
@@ -282,17 +150,16 @@ func RtF() {
 		}
 	}
 
-	// plainCKKSRingT := encoder.EncodeCoeffsRingTNew(coeffs, float64(params.T())/(1<<11))
 	plaintext = ckks_fv.NewPlaintextFV(params)
-	encoder.FVScaleUp(plainCKKSRingT, plaintext)
+	fvEncoder.FVScaleUp(plainCKKSRingT, plaintext)
 
 	fmt.Println("Done")
 
 	// FV Keystream
 	fmt.Println()
 	fmt.Println("Evaluate FV keystream")
-	pKeystream := ckks_fv.NewPlaintextFV(fvParams)
-	pKeystreamRingT := ckks_fv.NewPlaintextRingT(fvParams)
+	pKeystream := ckks_fv.NewPlaintextFV(params)
+	pKeystreamRingT := ckks_fv.NewPlaintextRingT(params)
 	if fullCoeffs {
 		for i := 0; i < params.N()/2; i++ {
 			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
@@ -305,7 +172,7 @@ func RtF() {
 			pKeystreamRingT.Value()[0].Coeffs[0][j] = keystream[i]
 		}
 	}
-	encoder.FVScaleUp(pKeystreamRingT, pKeystream)
+	fvEncoder.FVScaleUp(pKeystreamRingT, pKeystream)
 	fvKeystream := fvEncryptor.EncryptNew(pKeystream)
 	fvEvaluator.TransformToNTT(fvKeystream, fvKeystream)
 	ckksEvaluator.RescaleMany(fvKeystream, fvKeystream.Level(), fvKeystream)
@@ -318,7 +185,7 @@ func RtF() {
 	fvEvaluator.TransformToNTT(ciphertext, ciphertext)
 	ckksEvaluator.RescaleMany(ciphertext, ciphertext.Level(), ciphertext)
 	ckksEvaluator.Sub(ciphertext, fvKeystream, ciphertext)
-	ciphertext.SetScale(float64(params.Qi()[0]) / (1 << 11))
+	ciphertext.SetScale(float64(params.Qi()[0]) / float64(params.T()) * messageScaling)
 	fmt.Println("Done")
 
 	// Half-Bootstrap the ciphertext (homomorphic evaluation of ModRaise -> SubSum -> CtS -> EvalMod)
@@ -343,8 +210,8 @@ func RtF() {
 
 		fmt.Println()
 		fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
-		printDebug(params, ctBoot0, valuesWant0, ckksDecryptor, encoder)
-		printDebug(params, ctBoot1, valuesWant1, ckksDecryptor, encoder)
+		printDebug(params, ctBoot0, valuesWant0, ckksDecryptor, ckksEncoder)
+		printDebug(params, ctBoot1, valuesWant1, ckksDecryptor, ckksEncoder)
 
 	} else {
 		ctBoot, _ := hbtp.HalfBoot(ciphertext)
@@ -357,576 +224,7 @@ func RtF() {
 
 		fmt.Println()
 		fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
-		printDebug(params, ctBoot, valuesWant, ckksDecryptor, encoder)
-	}
-}
-
-func fvLT() {
-	var params *ckks_fv.Parameters
-	// params = ckks_fv.DefaultParams[10] // params.N == params.Slots
-	params = ckks_fv.DefaultParams[11] // params.N > params.Slots
-	slots := params.Slots()
-
-	kgen := ckks_fv.NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPair()
-	encryptor := ckks_fv.NewFVEncryptorFromPk(params, pk)
-	decryptor := ckks_fv.NewFVDecryptor(params, sk)
-	encoder := ckks_fv.NewEncoder(params)
-
-	rotations := []int{1, 2, 3}
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	evaluator := ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys})
-
-	data := make([]uint64, slots)
-	for i := range data {
-		data[i] = uint64(i)
-	}
-
-	plaintext := ckks_fv.NewPlaintextFV(params)
-	encoder.EncodeUint(data, plaintext)
-	ciphertext := encryptor.EncryptNew(plaintext)
-
-	mat := make([]map[int][]uint64, 1)
-	mat[0] = make(map[int][]uint64)
-	mat[0][0] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][0][i] = 1
-	}
-	mat[0][1] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][1][i] = uint64(i)
-	}
-	mat[0][2] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][2][i] = 0
-	}
-	mat[0][3] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][3][i] = 2
-	}
-
-	ptDiagMatrixT := encoder.EncodeDiagMatrixT(mat[0], 16.0, params.LogSlots())
-	// fmt.Printf("ptDiagMatrixT.N1: %d\n", ptDiagMatrixT.N1)
-
-	res := evaluator.LinearTransform(ciphertext, ptDiagMatrixT)[0]
-	decrypted := decryptor.DecryptNew(res)
-	decoded := encoder.DecodeUintNew(decrypted)
-
-	fmt.Printf("Matrix multiplication in Zt for t = %d:\n", params.T())
-	if params.Slots() < params.N() {
-		A := make([][]uint64, slots)
-		for i := 0; i < slots; i++ {
-			A[i] = make([]uint64, slots)
-		}
-
-		for k := range mat[0] {
-			for i := 0; i < slots; i++ {
-				A[i][(i+k)%slots] = mat[0][k][i]
-			}
-		}
-
-		for i := 0; i < slots; i++ {
-			fmt.Printf("[ ")
-			for j := 0; j < slots; j++ {
-				fmt.Printf("%3d ", A[i][j])
-			}
-			fmt.Printf("]")
-			if i == slots/2-1 {
-				fmt.Printf("   |/  ")
-			} else if i == slots/2 {
-				fmt.Printf("  /|   ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]", data[i])
-
-			if i == slots/2-1 || i == slots/2 {
-				fmt.Printf("  ---  ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]\n", decoded[i])
-		}
-	} else {
-		l := slots / 2
-		A := make([][]uint64, l)
-		B := make([][]uint64, l)
-		for i := 0; i < l; i++ {
-			A[i] = make([]uint64, l)
-			B[i] = make([]uint64, l)
-		}
-
-		for k := range mat[0] {
-			for i := 0; i < l; i++ {
-				A[i][(i+k)%l] = mat[0][k][i]
-			}
-			for i := l; i < slots; i++ {
-				B[i-l][(i+k)%l] = mat[0][k][i]
-			}
-		}
-
-		for i := 0; i < l; i++ {
-			fmt.Printf("[ ")
-			for j := 0; j < l; j++ {
-				fmt.Printf("%3d ", A[i][j])
-			}
-			fmt.Printf("]")
-			if i == l/2-1 {
-				fmt.Printf("   |/  ")
-			} else if i == l/2 {
-				fmt.Printf("  /|   ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]", data[i])
-
-			if i == l/2-1 || i == l/2 {
-				fmt.Printf("  ---  ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]\n", decoded[i])
-		}
-		fmt.Println()
-
-		for i := 0; i < l; i++ {
-			fmt.Printf("[ ")
-			for j := 0; j < l; j++ {
-				fmt.Printf("%3d ", B[i][j])
-			}
-			fmt.Printf("]")
-			if i == l/2-1 {
-				fmt.Printf("   |/  ")
-			} else if i == l/2 {
-				fmt.Printf("  /|   ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]", data[i+l])
-
-			if i == l/2-1 || i == l/2 {
-				fmt.Printf("  ---  ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]\n", decoded[i+l])
-		}
-	}
-}
-
-func mfvLT() {
-	var params *ckks_fv.Parameters
-	// params = ckks_fv.DefaultParams[10] // params.N == params.Slots
-	params = ckks_fv.DefaultParams[11] // params.N > params.Slots
-	slots := params.Slots()
-
-	kgen := ckks_fv.NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPair()
-	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
-	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
-	encoder := ckks_fv.NewMFVEncoder(params)
-
-	rotations := []int{1, 2, 3}
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys}, nil)
-
-	data := make([]uint64, slots)
-	for i := range data {
-		data[i] = uint64(i)
-	}
-
-	plaintext := ckks_fv.NewPlaintextFV(params)
-	encoder.EncodeUint(data, plaintext)
-	ciphertext := encryptor.EncryptNew(plaintext)
-
-	evaluator.ModSwitchMany(ciphertext, ciphertext, 2)
-
-	mat := make([]map[int][]uint64, 1)
-	mat[0] = make(map[int][]uint64)
-	mat[0][0] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][0][i] = 1
-	}
-	mat[0][1] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][1][i] = uint64(i)
-	}
-	mat[0][2] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][2][i] = 0
-	}
-	mat[0][3] = make([]uint64, slots)
-	for i := 0; i < slots; i++ {
-		mat[0][3][i] = 2
-	}
-
-	level := ciphertext.Level()
-	ptDiagMatrixT := encoder.EncodeDiagMatrixT(level, mat[0], 16.0, params.LogSlots())
-	// fmt.Printf("ptDiagMatrixT.N1: %d\n", ptDiagMatrixT.N1)
-
-	res := evaluator.LinearTransform(ciphertext, ptDiagMatrixT)[0]
-	decrypted := decryptor.DecryptNew(res)
-	decoded := encoder.DecodeUintNew(decrypted)
-
-	fmt.Printf("Matrix multiplication in Zt for t = %d:\n", params.T())
-	if params.Slots() < params.N() {
-		A := make([][]uint64, slots)
-		for i := 0; i < slots; i++ {
-			A[i] = make([]uint64, slots)
-		}
-
-		for k := range mat[0] {
-			for i := 0; i < slots; i++ {
-				A[i][(i+k)%slots] = mat[0][k][i]
-			}
-		}
-
-		for i := 0; i < slots; i++ {
-			fmt.Printf("[ ")
-			for j := 0; j < slots; j++ {
-				fmt.Printf("%3d ", A[i][j])
-			}
-			fmt.Printf("]")
-			if i == slots/2-1 {
-				fmt.Printf("   |/  ")
-			} else if i == slots/2 {
-				fmt.Printf("  /|   ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]", data[i])
-
-			if i == slots/2-1 || i == slots/2 {
-				fmt.Printf("  ---  ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]\n", decoded[i])
-		}
-	} else {
-		l := slots / 2
-		A := make([][]uint64, l)
-		B := make([][]uint64, l)
-		for i := 0; i < l; i++ {
-			A[i] = make([]uint64, l)
-			B[i] = make([]uint64, l)
-		}
-
-		for k := range mat[0] {
-			for i := 0; i < l; i++ {
-				A[i][(i+k)%l] = mat[0][k][i]
-			}
-			for i := l; i < slots; i++ {
-				B[i-l][(i+k)%l] = mat[0][k][i]
-			}
-		}
-
-		for i := 0; i < l; i++ {
-			fmt.Printf("[ ")
-			for j := 0; j < l; j++ {
-				fmt.Printf("%3d ", A[i][j])
-			}
-			fmt.Printf("]")
-			if i == l/2-1 {
-				fmt.Printf("   |/  ")
-			} else if i == l/2 {
-				fmt.Printf("  /|   ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]", data[i])
-
-			if i == l/2-1 || i == l/2 {
-				fmt.Printf("  ---  ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]\n", decoded[i])
-		}
-		fmt.Println()
-
-		for i := 0; i < l; i++ {
-			fmt.Printf("[ ")
-			for j := 0; j < l; j++ {
-				fmt.Printf("%3d ", B[i][j])
-			}
-			fmt.Printf("]")
-			if i == l/2-1 {
-				fmt.Printf("   |/  ")
-			} else if i == l/2 {
-				fmt.Printf("  /|   ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]", data[i+l])
-
-			if i == l/2-1 || i == l/2 {
-				fmt.Printf("  ---  ")
-			} else {
-				fmt.Printf("       ")
-			}
-			fmt.Printf("[ %3d ]\n", decoded[i+l])
-		}
-	}
-}
-
-func fvStC() {
-	var params *ckks_fv.Parameters
-	// params = ckks_fv.DefaultParams[12]
-	params = ckks_fv.DefaultParams[13] // full batching
-	slots := params.Slots()
-
-	kgen := ckks_fv.NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPair()
-	encryptor := ckks_fv.NewFVEncryptorFromPk(params, pk)
-	decryptor := ckks_fv.NewFVDecryptor(params, sk)
-	encoder := ckks_fv.NewEncoder(params)
-
-	rotations := []int{0, 1, 2, 3, 4, 12, 6, 8, 15}
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	evaluator := ckks_fv.NewFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys})
-
-	var plaintext, decrypted *ckks_fv.Plaintext
-	var ciphertext, res *ckks_fv.Ciphertext
-	var decoded []uint64
-
-	g := ring.PrimitiveRoot(params.T())
-	w := ring.ModExp(g, (int(params.T())-1)/(slots*2), params.T())
-
-	A := make([][]uint64, slots)
-	M := slots * 2
-	for i := range A {
-		A[i] = make([]uint64, slots)
-		for j := range A[i] {
-			if i < slots/2 {
-				A[i][j] = ring.ModExp(uint64(5), i, uint64(M)) * uint64(j) % uint64(M)
-			} else {
-				A[i][j] = (-ring.ModExp(uint64(5), i-slots/2, uint64(M)) * uint64(j)) % uint64(M)
-			}
-		}
-	}
-
-	for j := 0; j < slots; j++ {
-		fmt.Printf("[")
-		for i := 0; i < slots; i++ {
-			fmt.Printf("%5v ", ring.ModExp(w, int(A[i][utils.BitReverse64(uint64(j), uint64(params.LogSlots()))]), params.T()))
-		}
-		fmt.Println("]")
-	}
-	fmt.Println()
-	fmt.Println()
-
-	for i := 0; i < slots; i++ {
-		data := make([]uint64, slots)
-		data[i] = 1
-
-		plaintext = ckks_fv.NewPlaintextFV(params)
-		encoder.EncodeUint(data, plaintext)
-		ciphertext = encryptor.EncryptNew(plaintext)
-
-		res = evaluator.SlotsToCoeffs(ciphertext)
-		decrypted = decryptor.DecryptNew(res)
-		decoded = encoder.DecodeUintNew(decrypted)
-		fmt.Printf("%5v\n", decoded[:slots])
-	}
-}
-
-func mfvStC() {
-	var params *ckks_fv.Parameters
-	// params = ckks_fv.DefaultParams[12]
-	params = ckks_fv.DefaultParams[13] // full batching
-	params.SetLogFVSlots(params.LogN())
-	slots := params.FVSlots()
-
-	kgen := ckks_fv.NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPair()
-	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
-	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
-	encoder := ckks_fv.NewMFVEncoder(params)
-
-	rotations := make([]int, params.N()/2)
-	for i := 0; i < params.N()/2; i++ {
-		rotations[i] = i
-	}
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	pDcds := encoder.GenSlotToCoeffMatFV()
-	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rtks: rotkeys}, pDcds)
-
-	var plaintext *ckks_fv.Plaintext
-	var ciphertext, res *ckks_fv.Ciphertext
-	var decoded []uint64
-
-	for i := 0; i < slots; i++ {
-		data := make([]uint64, slots)
-		data[i] = 1
-
-		plaintext = ckks_fv.NewPlaintextFV(params)
-		encoder.EncodeUint(data, plaintext)
-		ciphertext = encryptor.EncryptNew(plaintext)
-
-		res = evaluator.SlotsToCoeffs(ciphertext)
-		decrypted1 := decryptor.DecryptNew(res)
-		decrypted2 := decryptor.DecryptNew(res)
-
-		ptRt := ckks_fv.NewPlaintextRingT(params)
-		encoder.DecodeRingT(decrypted1, ptRt)
-		fmt.Printf("%5v\n", *ptRt.Element.Value()[0])
-		decoded = encoder.DecodeUintNew(decrypted2)
-		// fmt.Printf("%5v\n", decoded)
-	}
-	_ = decoded
-}
-
-func MultiLevelFV() {
-	params := ckks_fv.DefaultFVParams[1]
-	encoder := ckks_fv.NewMFVEncoder(params)
-
-	kgen := ckks_fv.NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPair()
-	encryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
-	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
-
-	rlk := kgen.GenRelinearizationKey(sk)
-	rotIndex := make([]uint64, params.LogN())
-	for i := 0; i < params.LogN()-1; i++ {
-		rotIndex[i] = params.GaloisElementForColumnRotationBy(1 << i)
-	}
-	rotIndex[params.LogN()-1] = params.GaloisElementForRowRotation()
-	rotkeys := kgen.GenRotationKeys(rotIndex, sk)
-	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, nil)
-
-	N := params.N()
-	data1 := make([]uint64, N)
-	data2 := make([]uint64, N)
-	for i := 0; i < N; i++ {
-		data1[i] = uint64(2*i + 1)
-		data2[i] = params.T() - uint64(i+1)
-	}
-	innerSum1 := uint64(0)
-	innerSum2 := uint64(0)
-	for i := 0; i < N; i++ {
-		innerSum1 = (innerSum1 + data1[i]) % params.T()
-		innerSum2 = (innerSum2 + data2[i]) % params.T()
-	}
-
-	plaintext1 := ckks_fv.NewPlaintextFV(params)
-	plaintext2 := ckks_fv.NewPlaintextFV(params)
-	encoder.EncodeUint(data1, plaintext1)
-	encoder.EncodeUint(data2, plaintext2)
-
-	ciphertext1 := encryptor.EncryptNew(plaintext1)
-	ciphertext2 := encryptor.EncryptNew(plaintext2)
-
-	var ciphertext *ckks_fv.Ciphertext
-	ptMul := ckks_fv.NewPlaintextMul(params)
-	ptRt := ckks_fv.NewPlaintextRingT(params)
-	numPrint := 16
-
-	evaluator.ModSwitchMany(ciphertext1, ciphertext1, 2)
-	evaluator.ModSwitchMany(ciphertext2, ciphertext2, 2)
-
-	fmt.Println()
-	fmt.Println("Test ModSwitch")
-	printDec(ciphertext1, numPrint, decryptor, encoder)
-	printDec(ciphertext2, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test AddNew")
-	ciphertext = evaluator.AddNew(ciphertext1, ciphertext2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test AddNoModNew")
-	ciphertext = evaluator.AddNoModNew(ciphertext1, ciphertext2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test SubNew")
-	ciphertext = evaluator.SubNew(ciphertext1, ciphertext2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test SubNoModNew")
-	ciphertext = evaluator.SubNoModNew(ciphertext1, ciphertext2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test NegNew")
-	ciphertext = evaluator.NegNew(ciphertext1)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test ReduceNew")
-	ciphertext = evaluator.AddNoModNew(ciphertext1, ciphertext2)
-	ciphertext = evaluator.ReduceNew(ciphertext)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test MulScalarNew")
-	ciphertext = evaluator.MulScalarNew(ciphertext1, 2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-	ciphertext = evaluator.MulScalarNew(ciphertext2, params.T()-1)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test MulNew")
-	fmt.Println("1. PlaintextMul")
-	encoder.EncodeUintMul(data2, ptMul)
-	ciphertext = evaluator.MulNew(ciphertext1, ptMul)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println("2. PlaintextRingT")
-	encoder.EncodeUintRingT(data2, ptRt)
-	ciphertext = evaluator.MulNew(ciphertext1, ptRt)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println("3. Plaintext")
-	plaintext2 = decryptor.DecryptNew(ciphertext2)
-	ciphertext = evaluator.MulNew(ciphertext1, plaintext2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println("4. Ciphertext")
-	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	ciphertext = evaluator.MulNew(ciphertext1, ciphertext1)
-	ciphertext = evaluator.MulNew(ciphertext, ciphertext)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test Relinearize New")
-	ciphertext = evaluator.MulNew(ciphertext1, ciphertext2)
-	ciphertext = evaluator.RelinearizeNew(ciphertext)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test RotateColumnsNew")
-	ciphertext = evaluator.RotateColumnsNew(ciphertext1, 2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test RotateRowsNew")
-	ciphertext = evaluator.RotateRowsNew(ciphertext1)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	fmt.Println()
-	fmt.Println("Test InnerSum")
-	evaluator.InnerSum(ciphertext1, ciphertext)
-	fmt.Printf("InnerSum1: %d\n", innerSum1)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-	evaluator.InnerSum(ciphertext2, ciphertext)
-	fmt.Printf("InnerSum2: %d\n", innerSum2)
-	printDec(ciphertext, numPrint, decryptor, encoder)
-
-}
-
-func printDec(ct0 *ckks_fv.Ciphertext, numPrint int, decryptor ckks_fv.MFVDecryptor, encoder ckks_fv.MFVEncoder) {
-	decrypted := decryptor.DecryptNew(ct0)
-	decoded := encoder.DecodeUintNew(decrypted)
-	fmt.Println("  Result:")
-	for i := 0; i < numPrint; i++ {
-		fmt.Printf("    res[%d]: %d\n", i, decoded[i])
+		printDebug(params, ctBoot, valuesWant, ckksDecryptor, ckksEncoder)
 	}
 }
 
@@ -1005,11 +303,10 @@ func fvNoiseBudget() {
 }
 
 func smallBatchMFV() {
-	params := ckks_fv.DefaultFVParams[3]
-	logFVSlots := 4
-	FVSlots := 1 << logFVSlots
-	params.SetLogFVSlots(logFVSlots)
-	fmt.Printf("params.logFVSlots: %d\n", params.LogFVSlots())
+	params := ckks_fv.DefaultFVParams[8]
+	logFVSlots := params.LogFVSlots()
+	FVSlots := params.FVSlots()
+	fmt.Printf("params.logFVSlots: %d\n", logFVSlots)
 	encoder := ckks_fv.NewMFVEncoder(params)
 
 	kgen := ckks_fv.NewKeyGenerator(params)
@@ -1041,13 +338,15 @@ func smallBatchMFV() {
 	ciphertext1 := encryptor.EncryptNew(plaintext1)
 	ciphertext2 := encryptor.EncryptNew(plaintext2)
 
+	evaluator.ModSwitch(ciphertext1, ciphertext1)
+	evaluator.ModSwitch(ciphertext1, ciphertext1)
+	evaluator.ModSwitchMany(ciphertext2, ciphertext2, 2)
+
 	var ciphertext, tmp1, tmp2 *ckks_fv.Ciphertext
 	var decrypted *ckks_fv.Plaintext
 	var rot1, rot2, level int
 	decoded := make([]uint64, FVSlots)
 	ptRt := ckks_fv.NewPlaintextRingT(params)
-	tmp1 = ckks_fv.NewCiphertextFV(params, 1)
-	tmp2 = ckks_fv.NewCiphertextFV(params, 1)
 
 	// Test Add
 	fmt.Println("Test Add")
@@ -1076,6 +375,8 @@ func smallBatchMFV() {
 	fmt.Println("Test RotateColumns")
 	rot1 = 6
 	rot2 = 1
+	tmp1 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext1.Level())
+	tmp2 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext2.Level())
 	evaluator.RotateColumns(ciphertext1, rot1, tmp1)
 	evaluator.RotateColumns(ciphertext2, rot2, tmp2)
 	ciphertext = evaluator.AddNew(tmp1, tmp2)
@@ -1133,18 +434,74 @@ func smallBatchMFV() {
 	}
 
 	level = ciphertext1.Level()
-	ptDiagMatrixT := encoder.EncodeSmallDiagMatrixT(level, mat, 16, logFVSlots)
+	ptDiagMatrixT := encoder.EncodeDiagMatrixT(level, mat, 16, logFVSlots)
 	fmt.Printf("patDiagMatrixT.N1: %d\n", ptDiagMatrixT.N1)
 	res := evaluator.LinearTransform(ciphertext1, ptDiagMatrixT)[0]
 	decrypted = decryptor.DecryptNew(res)
 	encoder.DecodeUintSmall(decrypted, decoded)
 
-	for i := 0; i < FVSlots/2; i++ {
-		fmt.Printf("decoded[%d]: %d\n", i, decoded[i])
+	l := FVSlots / 2
+	A := make([][]uint64, l)
+	B := make([][]uint64, l)
+	for i := 0; i < l; i++ {
+		A[i] = make([]uint64, l)
+		B[i] = make([]uint64, l)
+	}
+
+	for k := range mat {
+		for i := 0; i < l; i++ {
+			A[i][(i+k)%l] = mat[k][i]
+		}
+		for i := l; i < FVSlots; i++ {
+			B[i-l][(i+k)%l] = mat[k][i]
+		}
+	}
+
+	for i := 0; i < l; i++ {
+		fmt.Printf("[ ")
+		for j := 0; j < l; j++ {
+			fmt.Printf("%3d ", A[i][j])
+		}
+		fmt.Printf("]")
+		if i == l/2-1 {
+			fmt.Printf("   |/  ")
+		} else if i == l/2 {
+			fmt.Printf("  /|   ")
+		} else {
+			fmt.Printf("       ")
+		}
+		fmt.Printf("[ %3d ]", data1[i])
+
+		if i == l/2-1 || i == l/2 {
+			fmt.Printf("  ---  ")
+		} else {
+			fmt.Printf("       ")
+		}
+		fmt.Printf("[ %3d ]\n", decoded[i])
 	}
 	fmt.Println()
-	for i := FVSlots / 2; i < FVSlots; i++ {
-		fmt.Printf("decoded[%d]: %d\n", i, decoded[i])
+
+	for i := 0; i < l; i++ {
+		fmt.Printf("[ ")
+		for j := 0; j < l; j++ {
+			fmt.Printf("%3d ", B[i][j])
+		}
+		fmt.Printf("]")
+		if i == l/2-1 {
+			fmt.Printf("   |/  ")
+		} else if i == l/2 {
+			fmt.Printf("  /|   ")
+		} else {
+			fmt.Printf("       ")
+		}
+		fmt.Printf("[ %3d ]", data1[i+l])
+
+		if i == l/2-1 || i == l/2 {
+			fmt.Printf("  ---  ")
+		} else {
+			fmt.Printf("       ")
+		}
+		fmt.Printf("[ %3d ]\n", decoded[i+l])
 	}
 	fmt.Println()
 
@@ -1158,7 +515,6 @@ func smallBatchMFV() {
 		coeffi := ptRt.Value()[0].Coeffs[0][j]
 		fmt.Printf("[%d] decrypted[%d]: %d\n", i, j, coeffi)
 	}
-	fmt.Printf("%5v\n", *ptRt.Element.Value()[0])
 	fmt.Println()
 }
 
@@ -1167,17 +523,12 @@ func main() {
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2, 3, 4, 5, 6, 7, 8.\n"
+	choice := "Choose one of 0, 1, 2, 3, 4, 5.\n"
 	for true {
 		fmt.Println("Choose an example:")
-		fmt.Println("  (1): Transciphering")
-		fmt.Println("  (2): Transciphering with Bootstrapping")
-		fmt.Println("  (3): RtF Framework")
-		fmt.Println("  (4): FV Linear Transform")
-		fmt.Println("  (5): FV SlotsToCoeff")
-		fmt.Println("  (6): Multi Level FV")
-		fmt.Println("  (7): FV Noise Estimate")
-		fmt.Println("  (8): Small FV Batching")
+		fmt.Println("  (1): RtF Framework")
+		fmt.Println("  (2): MFV Noise Estimate")
+		fmt.Println("  (3): Small MFV Batching")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
 
@@ -1188,28 +539,11 @@ func main() {
 				return
 			case 1:
 				fmt.Println()
-				transciphering()
+				RtF()
 			case 2:
 				fmt.Println()
-				transcipheringWithBoot()
-			case 3:
-				fmt.Println()
-				RtF()
-			case 4:
-				fmt.Println()
-				// fvLT()
-				mfvLT()
-			case 5:
-				fmt.Println()
-				// fvStC()
-				mfvStC()
-			case 6:
-				fmt.Println()
-				MultiLevelFV()
-			case 7:
-				fmt.Println()
 				fvNoiseBudget()
-			case 8:
+			case 3:
 				fmt.Println()
 				smallBatchMFV()
 			default:

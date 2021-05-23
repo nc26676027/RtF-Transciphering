@@ -319,6 +319,19 @@ var DefaultFVParams = []*Parameters{
 		pi:    []uint64{0x800000000b80001, 0x800000000bb0001, 0xffffffffffc0001}, // 2*59+60
 		sigma: DefaultSigma,
 	},
+
+	// Test params for smallBatchMFV
+	{
+		logN:       5,
+		logFVSlots: 4,
+		t:          65537,
+		qi: []uint64{0x7ffffffffe70001, 0x7ffffffffe10001, 0x7ffffffffcc0001, // 59 + 59 + 59 bits
+			0x400000000270001, 0x400000000350001, 0x400000000360001, // 58 + 58 + 58 bits
+			0x3ffffffffc10001, 0x3ffffffffbe0001, 0x3ffffffffbd0001, // 58 + 58 + 58 bits
+			0x4000000004d0001, 0x400000000570001, 0x400000000660001}, // 58 + 58 + 58 bits
+		pi:    []uint64{0xffffffffffc0001, 0x10000000001d0001, 0x10000000006e0001}, // 60 + 60 + 60 bits
+		sigma: DefaultSigma,
+	},
 }
 
 // Moduli stores the NTT primes of the RNS representation.

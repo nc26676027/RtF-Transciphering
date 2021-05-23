@@ -41,8 +41,13 @@ type MFVEvaluator interface {
 	InnerSum(ct0 *Ciphertext, ctOut *Ciphertext)
 	ShallowCopy() MFVEvaluator
 	WithKey(EvaluationKey) MFVEvaluator
+
+	// Modulus Switch
 	ModSwitch(ct0, ctOut *Ciphertext)
 	ModSwitchMany(ct0, ctOut *Ciphertext, nbModSwitch int)
+
+	// Transform to NTT
+	TransformToNTT(ct0, ctOut *Ciphertext)
 
 	// Linear Transformation
 	SlotsToCoeffs(ct *Ciphertext) *Ciphertext
@@ -991,7 +996,7 @@ func (eval *mfvEvaluator) getRingQElem(op Operand) *Element {
 		return o.El()
 	case *PlaintextRingT:
 		level := op.Level()
-		scaleUp(eval.ringQs[level], eval.deltasMont[level], o.value, eval.tmpPt.value)
+		fvScaleUp(eval.ringQs[level], eval.deltasMont[level], o.value, eval.tmpPt.value)
 		return eval.tmpPt.Element
 	default:
 		panic(fmt.Errorf("invalid operand type for operation: %T", o))
@@ -1348,6 +1353,19 @@ func (eval *mfvEvaluator) ModSwitchMany(ct0, ctOut *Ciphertext, nbModSwitch int)
 		ringQ.DivRoundByLastModulusMany(ct0.value[i], ctOut.value[i], nbModSwitch)
 		ctOut.value[i].Coeffs = ctOut.value[i].Coeffs[:level+1-nbModSwitch]
 	}
+}
+
+// TransformToNTT transforms ct0 into NTT form and returns the result in ctOut
+func (eval *mfvEvaluator) TransformToNTT(ct0 *Ciphertext, ctOut *Ciphertext) {
+	if ct0.Degree() != ctOut.Degree() {
+		panic("cannot TransformToNTT: input and output must have the same degree")
+	}
+
+	for i := range ct0.value {
+		eval.ringQ.NTT(ct0.value[i], ctOut.value[i])
+	}
+
+	ctOut.SetIsNTT(true)
 }
 
 func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) *Ciphertext {

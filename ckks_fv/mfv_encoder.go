@@ -3,6 +3,7 @@ package ckks_fv
 
 import (
 	"fmt"
+	"math/big"
 	"unsafe"
 
 	"github.com/ldsec/lattigo/v2/ring"
@@ -43,8 +44,8 @@ type MFVEncoder interface {
 	EncodeIntRingT(coeffs []int64, pt *PlaintextRingT)
 	EncodeIntMul(coeffs []int64, pt *PlaintextMul)
 
-	ScaleUp(*PlaintextRingT, *Plaintext)
-	ScaleDown(pt *Plaintext, ptRt *PlaintextRingT)
+	FVScaleUp(*PlaintextRingT, *Plaintext)
+	FVScaleDown(pt *Plaintext, ptRt *PlaintextRingT)
 	RingTToMul(ptRt *PlaintextRingT, ptmul *PlaintextMul)
 	MulToRingT(pt *PlaintextMul, ptRt *PlaintextRingT)
 
@@ -61,7 +62,7 @@ type MFVEncoder interface {
 	EncodeUintSmall(coeffs []uint64, p *Plaintext)
 	DecodeUintSmall(p interface{}, coeffs []uint64)
 	DecodeUintSmallNew(p interface{}) (coeffs []uint64)
-	EncodeSmallDiagMatrixT(level int, vector map[int][]uint64, maxN1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
+	// EncodeSmallDiagMatrixT(level int, vector map[int][]uint64, maxN1N2Ratio float64, logSlots int) (matrix *PtDiagMatrixT)
 }
 
 type multiLevelContext struct {
@@ -189,6 +190,23 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 	}
 }
 
+// GenLiftParams generates the lifting parameters.
+func GenLiftParams(ringQ *ring.Ring, t uint64) (deltaMont []uint64) {
+
+	delta := new(big.Int).Quo(ringQ.ModulusBigint, ring.NewUint(t))
+
+	deltaMont = make([]uint64, len(ringQ.Modulus))
+
+	tmp := new(big.Int)
+	bredParams := ringQ.BredParams
+	for i, Qi := range ringQ.Modulus {
+		deltaMont[i] = tmp.Mod(delta, ring.NewUint(Qi)).Uint64()
+		deltaMont[i] = ring.MForm(deltaMont[i], Qi, bredParams[i])
+	}
+
+	return
+}
+
 // EncodeUintRingT encodes a slice of uint64 into a Plaintext in R_t
 func (encoder *mfvEncoder) EncodeUintRingT(coeffs []uint64, p *PlaintextRingT) {
 	if len(coeffs) > len(encoder.indexMatrix) {
@@ -241,7 +259,7 @@ func (encoder *mfvEncoder) EncodeUint(coeffs []uint64, p *Plaintext) {
 	encoder.EncodeUintRingT(coeffs, ptRt)
 
 	// Scales by Q/t
-	encoder.ScaleUp(ptRt, p)
+	encoder.FVScaleUp(ptRt, p)
 }
 
 // EncodeUintSmall encodes an uint64 slice of size FVSlots on a plaintext
@@ -250,7 +268,7 @@ func (encoder *mfvEncoder) EncodeUintSmall(coeffs []uint64, p *Plaintext) {
 
 	encoder.EncodeUintRingTSmall(coeffs, ptRt)
 
-	encoder.ScaleUp(ptRt, p)
+	encoder.FVScaleUp(ptRt, p)
 }
 
 func (encoder *mfvEncoder) EncodeUintMul(coeffs []uint64, p *PlaintextMul) {
@@ -299,7 +317,7 @@ func (encoder *mfvEncoder) EncodeInt(coeffs []int64, p *Plaintext) {
 	encoder.EncodeIntRingT(coeffs, ptRt)
 
 	// Scales by Q/t
-	encoder.ScaleUp(ptRt, p)
+	encoder.FVScaleUp(ptRt, p)
 }
 
 func (encoder *mfvEncoder) EncodeIntMul(coeffs []int64, p *PlaintextMul) {
@@ -312,15 +330,15 @@ func (encoder *mfvEncoder) EncodeIntMul(coeffs []int64, p *PlaintextMul) {
 	encoder.RingTToMul(ptRt, p)
 }
 
-// ScaleUp transforms a PlaintextRingT (R_t) into a Plaintext (R_q) by scaling up the coefficient by Q/t.
-func (encoder *mfvEncoder) ScaleUp(ptRt *PlaintextRingT, pt *Plaintext) {
+// FVScaleUp transforms a PlaintextRingT (R_t) into a Plaintext (R_q) by scaling up the coefficient by Q/t.
+func (encoder *mfvEncoder) FVScaleUp(ptRt *PlaintextRingT, pt *Plaintext) {
 	level := pt.Level()
 	ringQ := encoder.ringQs[level]
 	deltaMont := encoder.deltasMont[level]
-	scaleUp(ringQ, deltaMont, ptRt.value, pt.value)
+	fvScaleUp(ringQ, deltaMont, ptRt.value, pt.value)
 }
 
-func scaleUp(ringQ *ring.Ring, deltaMont []uint64, pIn, pOut *ring.Poly) {
+func fvScaleUp(ringQ *ring.Ring, deltaMont []uint64, pIn, pOut *ring.Poly) {
 
 	for i := len(ringQ.Modulus) - 1; i >= 0; i-- {
 		out := pOut.Coeffs[i]
@@ -346,8 +364,8 @@ func scaleUp(ringQ *ring.Ring, deltaMont []uint64, pIn, pOut *ring.Poly) {
 	}
 }
 
-// ScaleDown transforms a Plaintext (R_q) into a PlaintextRingT (R_t) by scaling down the coefficient by t/Q and rounding.
-func (encoder *mfvEncoder) ScaleDown(pt *Plaintext, ptRt *PlaintextRingT) {
+// FVScaleDown transforms a Plaintext (R_q) into a PlaintextRingT (R_t) by scaling down the coefficient by t/Q and rounding.
+func (encoder *mfvEncoder) FVScaleDown(pt *Plaintext, ptRt *PlaintextRingT) {
 	level := pt.Level()
 	encoder.scalers[level].DivByQOverTRounded(pt.value, ptRt.value)
 }
@@ -382,7 +400,7 @@ func (encoder *mfvEncoder) MulToRingT(pt *PlaintextMul, ptRt *PlaintextRingT) {
 func (encoder *mfvEncoder) DecodeRingT(p interface{}, ptRt *PlaintextRingT) {
 	switch pt := p.(type) {
 	case *Plaintext:
-		encoder.ScaleDown(pt, ptRt)
+		encoder.FVScaleDown(pt, ptRt)
 	case *PlaintextMul:
 		encoder.MulToRingT(pt, ptRt)
 	case *PlaintextRingT:
@@ -476,86 +494,22 @@ func (encoder *mfvEncoder) DecodeIntNew(p interface{}) (coeffs []int64) {
 	return
 }
 
-func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uint64, maxM1N2Ratio float64, logFVSlots int) (matrix *PtDiagMatrixT) {
-	matrix = new(PtDiagMatrixT)
-	matrix.LogSlots = logFVSlots
-	slots := 1 << logFVSlots
-	isFullSlots := encoder.params.logN == encoder.params.logFVSlots
-
-	if len(diagMatrix) > 2 {
-		// N1*N2 = N
-		N1 := findbestbabygiantstepsplit(diagMatrix, slots, maxM1N2Ratio)
-		matrix.N1 = N1
-
-		index, _ := bsgsIndex(diagMatrix, slots, N1)
-
-		matrix.Vec = make(map[int][2]*ring.Poly)
-
-		for j := range index {
-			for _, i := range index[j] {
-				// manages inputs that have rotation between 0 and slots-1 or between -slots/2 and slots/2-1
-				v := diagMatrix[N1*j+i]
-				if len(v) == 0 {
-					v = diagMatrix[(N1*j+i)-slots]
-				}
-
-				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(level, logFVSlots, rotateT(v, -N1*j, isFullSlots))
-			}
-		}
-	} else {
-		matrix.Vec = make(map[int][2]*ring.Poly)
-
-		for i := range diagMatrix {
-			idx := i
-			if idx < 0 {
-				idx += slots
-			}
-			matrix.Vec[idx] = encoder.encodeDiagonalT(level, logFVSlots, diagMatrix[i])
-		}
-
-		matrix.naive = true
-	}
-
-	return
+// PtDiagMatrixT is a struct storing a plaintext diagonalized matrix
+// ready to be evaluated on a ciphertext using evaluator.MultiplyByDiagMatrice.
+type PtDiagMatrixT struct {
+	LogFVSlots int                   // Log of the number of slots of the plaintext
+	N1         int                   // N1 is the number of inner loops of the baby-step giant-step algo used in the evaluation
+	Vec        map[int][2]*ring.Poly // Vec is the matrix, in diagonal form, where each entry of vec is an indexed non zero diagonal
+	naive      bool
 }
 
-func (encoder *mfvEncoder) encodeDiagonalT(level int, logSlots int, m []uint64) [2]*ring.Poly {
-	ringQ := encoder.ringQs[level]
-	ringP := encoder.ringP
-	ringT := encoder.ringT
-
-	// EncodeUintRingT
-	mT := ringT.NewPoly()
-	for i := 0; i < len(m); i++ {
-		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i]
-	}
-	for i := len(m); i < len(encoder.indexMatrix); i++ {
-		mT.Coeffs[0][encoder.indexMatrix[i]] = m[i%len(m)]
-	}
-	ringT.InvNTT(mT, mT)
-
-	// RingTToMulRingQ
-	mQ := ringQ.NewPoly()
-	for i := 0; i < len(ringQ.Modulus); i++ {
-		copy(mQ.Coeffs[i], mT.Coeffs[0])
-	}
-	ringQ.NTTLazy(mQ, mQ)
-	ringQ.MForm(mQ, mQ)
-
-	// RingTToMulRingP
-	mP := ringP.NewPoly()
-	for i := 0; i < len(encoder.ringP.Modulus); i++ {
-		copy(mP.Coeffs[i], mT.Coeffs[0])
-	}
-	ringP.NTTLazy(mP, mP)
-	ringP.MForm(mP, mP)
-
-	return [2]*ring.Poly{mQ, mP}
-}
-
-func (encoder *mfvEncoder) EncodeSmallDiagMatrixT(level int, diagMatrix map[int][]uint64, maxN1N2Ratio float64, logFVSlots int) (matrix *PtDiagMatrixT) {
+// EncodeDiagMatrixT encodes a diagonalized plaintext matrix into PtDiagMatrixT struct.
+// It can then be evaluated on a ciphertext using evaluator.MultiplyByDiagMatrice.
+// maxN1N2Ratio is the maximum ratio between the inner and outer loop of the baby-step giant-step algorithm used in evaluator.MultiplyByDiagMatrice.
+// Optimal maxN1N2Ratio value is between 4 and 16 depending on the sparsity of the matrix.
+func (encoder *mfvEncoder) EncodeDiagMatrixT(level int, diagMatrix map[int][]uint64, maxN1N2Ratio float64, logFVSlots int) (matrix *PtDiagMatrixT) {
 	matrix = new(PtDiagMatrixT)
-	matrix.LogSlots = logFVSlots
+	matrix.LogFVSlots = logFVSlots
 	fvSlots := 1 << logFVSlots
 
 	if len(diagMatrix) > 2 {
@@ -575,7 +529,7 @@ func (encoder *mfvEncoder) EncodeSmallDiagMatrixT(level int, diagMatrix map[int]
 					v = diagMatrix[(N1*j+i)-fvSlots]
 				}
 
-				matrix.Vec[N1*j+i] = encoder.encodeSmallDiagonalT(level, logFVSlots, rotateSmallT(v, -N1*j))
+				matrix.Vec[N1*j+i] = encoder.encodeDiagonalT(level, logFVSlots, rotateSmallT(v, -N1*j))
 			}
 		}
 	} else {
@@ -586,7 +540,7 @@ func (encoder *mfvEncoder) EncodeSmallDiagMatrixT(level int, diagMatrix map[int]
 			if idx < 0 {
 				idx += fvSlots
 			}
-			matrix.Vec[idx] = encoder.encodeSmallDiagonalT(level, logFVSlots, diagMatrix[i])
+			matrix.Vec[idx] = encoder.encodeDiagonalT(level, logFVSlots, diagMatrix[i])
 		}
 
 		matrix.naive = true
@@ -595,7 +549,7 @@ func (encoder *mfvEncoder) EncodeSmallDiagMatrixT(level int, diagMatrix map[int]
 	return
 }
 
-func (encoder *mfvEncoder) encodeSmallDiagonalT(level, logFVSlots int, m []uint64) [2]*ring.Poly {
+func (encoder *mfvEncoder) encodeDiagonalT(level, logFVSlots int, m []uint64) [2]*ring.Poly {
 	ringQ := encoder.ringQs[level]
 	ringP := encoder.ringP
 	ringT := encoder.ringT
@@ -644,9 +598,110 @@ func (encoder *mfvEncoder) GenSlotToCoeffMatFV() (pDcds [][]*PtDiagMatrixT) {
 		pVecDcd := genDcdMats(params.logFVSlots, params.t)
 
 		for i := 0; i < len(pDcds[level]); i++ {
-			pDcds[level][i] = encoder.EncodeSmallDiagMatrixT(level, pVecDcd[i], 16.0, params.logFVSlots)
+			pDcds[level][i] = encoder.EncodeDiagMatrixT(level, pVecDcd[i], 16.0, params.logFVSlots)
 		}
 	}
 
+	return
+}
+
+func genDcdMats(logSlots int, t uint64) (plainVector []map[int][]uint64) {
+
+	plainVector = make([]map[int][]uint64, logSlots+1)
+	roots := computePrimitiveRoots(1<<(logSlots+1), t)
+	diabMats := genDcdDiabDecomp(logSlots, roots)
+	for i := 0; i < logSlots+1; i++ {
+		// First layer of the i-th level of the NTT
+		plainVector[i] = diabMats[i]
+	}
+
+	return
+}
+
+func genDcdDiabDecomp(logN int, roots []uint64) (res []map[int][]uint64) {
+	N := 1 << logN
+	M := 2 * N
+	pow5 := make([]int, M)
+	res = make([]map[int][]uint64, logN+1)
+
+	for i, exp5 := 0, 1; i < N; i, exp5 = i+1, exp5*5%M {
+		pow5[i] = exp5
+	}
+	res[0] = make(map[int][]uint64)
+	res[0][0] = make([]uint64, N)
+	res[0][1] = make([]uint64, N)
+	res[0][N/2-1] = make([]uint64, N)
+	for i := 0; i < N; i += 2 {
+		res[0][0][i] = 1
+		res[0][0][i+1] = roots[3*N/2]
+		res[0][1][i] = roots[N/2]
+		res[0][N/2-1][i+1] = 1
+	}
+
+	for ind := 1; ind < logN-1; ind++ {
+		s := 1 << (ind - 1) // size of each diabMat
+		gap := N / s / 4
+
+		res[ind] = make(map[int][]uint64)
+		for _, rot := range []int{0, s, 2 * s, N/2 - s, N/2 - 2*s} {
+			if res[ind][rot] == nil {
+				res[ind][rot] = make([]uint64, N)
+			}
+		}
+
+		for i := 0; i < N; i += 4 * s {
+			/*
+				[I 0 W0 0 ]
+				[I 0 W1 0 ]
+				[0 I 0 W0-]
+				[0 I 0 W1-]
+			*/
+			for j := 0; j < s; j++ {
+				res[ind][2*s][i+j] = roots[pow5[j]*gap%M]     // W0
+				res[ind][s][i+s+j] = roots[pow5[s+j]*gap%M]   // W1
+				res[ind][s][i+2*s+j] = roots[M-pow5[j]*gap%M] // W0-
+				res[ind][0][i+j] = 1
+				res[ind][0][i+3*s+j] = roots[M-pow5[s+j]*gap%M] // W1-
+				res[ind][N/2-s][i+s+j] = 1
+				res[ind][N/2-s][i+2*s+j] = 1
+				res[ind][N/2-2*s][i+3*s+j] = 1
+			}
+		}
+	}
+
+	s := N / 4
+
+	res[logN-1] = make(map[int][]uint64)
+	res[logN-1][0] = make([]uint64, N)
+	res[logN-1][s] = make([]uint64, N)
+
+	res[logN] = make(map[int][]uint64)
+	res[logN][0] = make([]uint64, N)
+	res[logN][s] = make([]uint64, N)
+
+	for i := 0; i < s; i++ {
+		res[logN-1][0][i] = 1
+		res[logN-1][0][i+3*s] = roots[M-pow5[s+i]%M]
+		res[logN-1][s][i+s] = 1
+		res[logN-1][s][i+2*s] = roots[M-pow5[i]%M]
+
+		res[logN][0][i] = roots[pow5[i]%M]
+		res[logN][0][i+3*s] = 1
+		res[logN][s][i+s] = roots[pow5[s+i]%M]
+		res[logN][s][i+2*s] = 1
+	}
+	return
+}
+
+// compute M-th root of unity
+func computePrimitiveRoots(M int, t uint64) (roots []uint64) {
+	g := ring.PrimitiveRoot(t)
+	w := ring.ModExp(g, (int(t)-1)/M, t)
+
+	roots = make([]uint64, M)
+	roots[0] = 1
+	for i := 1; i < M; i++ {
+		roots[i] = (roots[i-1] * w) % t
+	}
 	return
 }
