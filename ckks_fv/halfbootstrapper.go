@@ -19,7 +19,7 @@ type HalfBootstrapper struct {
 	dslots    int // Number of plaintext slots after the re-encoding
 	logdslots int
 
-	encoder Encoder // Encoder
+	encoder CKKSEncoder // Encoder
 
 	prescale     float64                 // Q[0]/(Q[0]/|m|)
 	postscale    float64                 // Qi sineeval/(Q[0]/|m|)
@@ -73,7 +73,7 @@ func newHalfBootstrapper(params *Parameters, hbtpParams *HalfBootParameters) (hb
 	hbtp.sinescale = math.Exp2(math.Round(math.Log2(hbtp.SineEvalModuli.ScalingFactor)))
 	hbtp.postscale = hbtp.sinescale / hbtp.MessageRatio
 
-	hbtp.encoder = NewEncoder(params)
+	hbtp.encoder = NewCKKSEncoder(params)
 	hbtp.ckksEvaluator = NewCKKSEvaluator(params, EvaluationKey{}).(*ckksEvaluator) // creates an evaluator without keys for genDFTMatrices
 
 	hbtp.genSinePoly()

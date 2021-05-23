@@ -16,8 +16,8 @@ const GaloisGen int = 5
 
 var pi = "3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679821480865132823066470938446095505822317253594081284811174502841027019385211055596446229489549303819644288109756659334461284756482337867831652712019091456485669234603486104543266482133936072602491412737245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094330572703657595919530921861173819326117931051185480744623799627495673518857527248912279381830119491298336733624406566430860213949463952247371907021798609437027705392171762931767523846748184676694051320005681271452635608277857713427577896091736371787214684409012249534301465495853710507922796892589235420199561121290219608640344181598136297747713099605187072113499999983729780499510597317328160963185950244594553469083026425223082533446850352619311881710100031378387528865875332083814206171776691473035982534904287554687311595628638823537875937519577818577805321712268066130019278766111959092164201989"
 
-// Encoder is an interface implenting the encoding algorithms.
-type Encoder interface {
+// CKKSEncoder is an interface implenting the encoding algorithms.
+type CKKSEncoder interface {
 	EncodeComplex(plaintext *Plaintext, values []complex128, logSlots int)
 	EncodeComplexNew(values []complex128, logSlots int) (plaintext *Plaintext)
 	EncodeComplexAtLvlNew(level int, values []complex128, logSlots int) (plaintext *Plaintext)
@@ -65,8 +65,8 @@ type EncoderBigComplex interface {
 	//DecodeCoeffs(plaintext *Plaintext) (res []*big.Float)
 }
 
-// encoder is a struct storing the necessary parameters to encode a slice of complex number on a Plaintext.
-type encoder struct {
+// ckksEncoder is a struct storing the necessary parameters to encode a slice of complex number on a Plaintext.
+type ckksEncoder struct {
 	params *Parameters
 	ringQ  *ring.Ring
 	ringP  *ring.Ring
@@ -88,13 +88,13 @@ type encoder struct {
 }
 
 type encoderComplex128 struct {
-	encoder
+	ckksEncoder
 	values      []complex128
 	valuesfloat []float64
 	roots       []complex128
 }
 
-func newEncoder(params *Parameters) encoder {
+func newCKKSEncoder(params *Parameters) ckksEncoder {
 
 	m := 2 * params.N()
 
@@ -131,7 +131,7 @@ func newEncoder(params *Parameters) encoder {
 
 	gaussianSampler := ring.NewGaussianSampler(prng)
 
-	return encoder{
+	return ckksEncoder{
 		params:          params.Copy(),
 		ringQ:           q,
 		ringP:           p,
@@ -146,25 +146,25 @@ func newEncoder(params *Parameters) encoder {
 	}
 }
 
-// NewEncoder creates a new Encoder that is used to encode a slice of complex values of size at most N/2 (the number of slots) on a Plaintext.
-func NewEncoder(params *Parameters) Encoder {
+// NewCKKSEncoder creates a new Encoder that is used to encode a slice of complex values of size at most N/2 (the number of slots) on a Plaintext.
+func NewCKKSEncoder(params *Parameters) CKKSEncoder {
 
-	encoder := newEncoder(params)
+	ckksEncoder := newCKKSEncoder(params)
 
 	var angle float64
-	roots := make([]complex128, encoder.m+1)
-	for i := 0; i < encoder.m; i++ {
-		angle = 2 * 3.141592653589793 * float64(i) / float64(encoder.m)
+	roots := make([]complex128, ckksEncoder.m+1)
+	for i := 0; i < ckksEncoder.m; i++ {
+		angle = 2 * 3.141592653589793 * float64(i) / float64(ckksEncoder.m)
 
 		roots[i] = complex(math.Cos(angle), math.Sin(angle))
 	}
-	roots[encoder.m] = roots[0]
+	roots[ckksEncoder.m] = roots[0]
 
 	return &encoderComplex128{
-		encoder:     encoder,
+		ckksEncoder: ckksEncoder,
 		roots:       roots,
-		values:      make([]complex128, encoder.m>>2),
-		valuesfloat: make([]float64, encoder.m>>1),
+		values:      make([]complex128, ckksEncoder.m>>2),
+		valuesfloat: make([]float64, ckksEncoder.m>>1),
 	}
 }
 
@@ -790,7 +790,7 @@ func (encoder *encoderComplex128) decodeCoeffsPublic(plaintext *Plaintext, sigma
 }
 
 type encoderBigComplex struct {
-	encoder
+	ckksEncoder
 	zero            *big.Float
 	cMul            *ring.ComplexMultiplier
 	logPrecision    int
@@ -800,9 +800,9 @@ type encoderBigComplex struct {
 	gaussianSampler *ring.GaussianSampler
 }
 
-// NewEncoderBigComplex creates a new encoder using arbitrary precision complex arithmetic.
-func NewEncoderBigComplex(params *Parameters, logPrecision int) EncoderBigComplex {
-	encoder := newEncoder(params)
+// NewCKKSEncoderBigComplex creates a new encoder using arbitrary precision complex arithmetic.
+func NewCKKSEncoderBigComplex(params *Parameters, logPrecision int) EncoderBigComplex {
+	ckksEncoder := newCKKSEncoder(params)
 
 	var PI = new(big.Float)
 	PI.SetPrec(uint(logPrecision))
@@ -814,12 +814,12 @@ func NewEncoderBigComplex(params *Parameters, logPrecision int) EncoderBigComple
 	PIHalf.Quo(PIHalf, ring.NewFloat(2, logPrecision))
 
 	var angle *big.Float
-	roots := make([]*ring.Complex, encoder.m+1)
-	for i := 0; i < encoder.m; i++ {
+	roots := make([]*ring.Complex, ckksEncoder.m+1)
+	for i := 0; i < ckksEncoder.m; i++ {
 		angle = ring.NewFloat(2, logPrecision)
 		angle.Mul(angle, PI)
 		angle.Mul(angle, ring.NewFloat(float64(i), logPrecision))
-		angle.Quo(angle, ring.NewFloat(float64(encoder.m), logPrecision))
+		angle.Quo(angle, ring.NewFloat(float64(ckksEncoder.m), logPrecision))
 
 		real := ring.Cos(angle)
 		angle.Sub(PIHalf, angle)
@@ -828,12 +828,12 @@ func NewEncoderBigComplex(params *Parameters, logPrecision int) EncoderBigComple
 		roots[i] = ring.NewComplex(real, imag)
 	}
 
-	roots[encoder.m] = roots[0].Copy()
+	roots[ckksEncoder.m] = roots[0].Copy()
 
-	values := make([]*ring.Complex, encoder.m>>2)
-	valuesfloat := make([]*big.Float, encoder.m>>1)
+	values := make([]*ring.Complex, ckksEncoder.m>>2)
+	valuesfloat := make([]*big.Float, ckksEncoder.m>>1)
 
-	for i := 0; i < encoder.m>>2; i++ {
+	for i := 0; i < ckksEncoder.m>>2; i++ {
 
 		values[i] = ring.NewComplex(ring.NewFloat(0, logPrecision), ring.NewFloat(0, logPrecision))
 		valuesfloat[i*2] = ring.NewFloat(0, logPrecision)
@@ -841,7 +841,7 @@ func NewEncoderBigComplex(params *Parameters, logPrecision int) EncoderBigComple
 	}
 
 	return &encoderBigComplex{
-		encoder:      encoder,
+		ckksEncoder:  ckksEncoder,
 		zero:         ring.NewFloat(0, logPrecision),
 		cMul:         ring.NewComplexMultiplier(),
 		logPrecision: logPrecision,

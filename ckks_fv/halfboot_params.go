@@ -148,7 +148,7 @@ func (hb *HalfBootParameters) CtSLevels() (ctsLevel []int) {
 // GenCoeffsToSlotsMatrixWithoutRepack generates the factorized encoding matrix
 // scaling : constant by witch the all the matrices will be multiplied by
 // encoder : ckks.Encoder
-func (hb *HalfBootParameters) GenCoeffsToSlotsMatrixWithoutRepack(scaling complex128, encoder Encoder) []*PtDiagMatrix {
+func (hb *HalfBootParameters) GenCoeffsToSlotsMatrixWithoutRepack(scaling complex128, encoder CKKSEncoder) []*PtDiagMatrix {
 
 	logSlots := hb.LogSlots
 	slots := 1 << logSlots

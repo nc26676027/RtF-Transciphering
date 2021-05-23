@@ -9,7 +9,7 @@ import (
 	"github.com/ldsec/lattigo/v2/utils"
 )
 
-func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valuesWant []complex128, decryptor ckks_fv.CKKSDecryptor, encoder ckks_fv.Encoder) (valuesTest []complex128) {
+func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valuesWant []complex128, decryptor ckks_fv.CKKSDecryptor, encoder ckks_fv.CKKSEncoder) (valuesTest []complex128) {
 
 	valuesTest = encoder.DecodeComplex(decryptor.DecryptNew(ciphertext), params.LogSlots())
 	logSlots := params.LogSlots()
@@ -45,7 +45,7 @@ func RtF() {
 	var hbtp *ckks_fv.HalfBootstrapper
 	var kgen ckks_fv.KeyGenerator
 	var fvEncoder ckks_fv.MFVEncoder
-	var ckksEncoder ckks_fv.Encoder
+	var ckksEncoder ckks_fv.CKKSEncoder
 	var sk *ckks_fv.SecretKey
 	var pk *ckks_fv.PublicKey
 	var fvEncryptor ckks_fv.MFVEncryptor
@@ -80,7 +80,7 @@ func RtF() {
 	sk, pk = kgen.GenKeyPairSparse(hbtpParams.H)
 
 	fvEncoder = ckks_fv.NewMFVEncoder(params)
-	ckksEncoder = ckks_fv.NewEncoder(params)
+	ckksEncoder = ckks_fv.NewCKKSEncoder(params)
 	fvEncryptor = ckks_fv.NewMFVEncryptorFromPk(params, pk)
 	ckksDecryptor = ckks_fv.NewCKKSDecryptor(params, sk)
 

@@ -217,7 +217,7 @@ func (b *BootstrappingParameters) StCLevels() (stcLevel []int) {
 // GenCoeffsToSlotsMatrix generates the factorized encoding matrix
 // scaling : constant by witch the all the matrices will be multuplied by
 // encoder : ckks.Encoder
-func (b *BootstrappingParameters) GenCoeffsToSlotsMatrix(scaling complex128, encoder Encoder) []*PtDiagMatrix {
+func (b *BootstrappingParameters) GenCoeffsToSlotsMatrix(scaling complex128, encoder CKKSEncoder) []*PtDiagMatrix {
 
 	logSlots := b.LogSlots
 	slots := 1 << logSlots
@@ -254,7 +254,7 @@ func (b *BootstrappingParameters) GenCoeffsToSlotsMatrix(scaling complex128, enc
 // GenSlotsToCoeffsMatrix generates the factorized decoding matrix
 // scaling : constant by witch the all the matrices will be multuplied by
 // encoder : ckks.Encoder
-func (b *BootstrappingParameters) GenSlotsToCoeffsMatrix(scaling complex128, encoder Encoder) []*PtDiagMatrix {
+func (b *BootstrappingParameters) GenSlotsToCoeffsMatrix(scaling complex128, encoder CKKSEncoder) []*PtDiagMatrix {
 
 	logSlots := b.LogSlots
 	slots := 1 << logSlots
