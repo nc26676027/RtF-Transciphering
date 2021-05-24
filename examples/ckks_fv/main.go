@@ -315,12 +315,10 @@ func smallBatchMFV() {
 	decryptor := ckks_fv.NewMFVDecryptor(params, sk)
 
 	rlk := kgen.GenRelinearizationKey(sk)
-	rotations := make([]int, params.N()/2)
-	for i := 0; i < params.N()/2; i++ {
-		rotations[i] = i
-	}
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
 	pDcds := encoder.GenSlotToCoeffMatFV()
+	rotations := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+
 	evaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
 
 	data1 := make([]uint64, FVSlots)
@@ -407,31 +405,33 @@ func smallBatchMFV() {
 	}
 	fmt.Println()
 
+	_, _, _, _ = tmp1, tmp2, rot1, rot2
 	// Test RotateColumns
-	fmt.Println("Test RotateColumns")
-	rot1 = 6
-	rot2 = 1
-	tmp1 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext1.Level())
-	tmp2 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext2.Level())
-	evaluator.RotateColumns(ciphertext1, rot1, tmp1)
-	evaluator.RotateColumns(ciphertext2, rot2, tmp2)
-	ciphertext = evaluator.AddNew(tmp1, tmp2)
+	/*
+		fmt.Println("Test RotateColumns")
+		rot1 = 6
+		rot2 = 1
+		tmp1 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext1.Level())
+		tmp2 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext2.Level())
+		evaluator.RotateColumns(ciphertext1, rot1, tmp1)
+		evaluator.RotateColumns(ciphertext2, rot2, tmp2)
+		ciphertext = evaluator.AddNew(tmp1, tmp2)
 
-	decrypted = decryptor.DecryptNew(ciphertext)
-	encoder.DecodeUintSmall(decrypted, decoded)
+		decrypted = decryptor.DecryptNew(ciphertext)
+		encoder.DecodeUintSmall(decrypted, decoded)
 
-	for i := 0; i < FVSlots/2; i++ {
-		sol := data1[(i+rot1)%(FVSlots/2)] + data2[(i+rot2)%(FVSlots/2)]
-		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
-	}
-	fmt.Println()
+		for i := 0; i < FVSlots/2; i++ {
+			sol := data1[(i+rot1)%(FVSlots/2)] + data2[(i+rot2)%(FVSlots/2)]
+			fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+		}
+		fmt.Println()
 
-	for i := FVSlots / 2; i < FVSlots; i++ {
-		sol := data1[FVSlots/2+(i+rot1)%(FVSlots/2)] + data2[FVSlots/2+(i+rot2)%(FVSlots/2)]
-		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
-	}
-	fmt.Println()
-
+		for i := FVSlots / 2; i < FVSlots; i++ {
+			sol := data1[FVSlots/2+(i+rot1)%(FVSlots/2)] + data2[FVSlots/2+(i+rot2)%(FVSlots/2)]
+			fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+		}
+		fmt.Println()
+	*/
 	// Test RotateRows
 	fmt.Println("Test RotateRows")
 	evaluator.RotateRows(ciphertext1, ciphertext)
@@ -565,10 +565,11 @@ func main() {
 		fmt.Println("  (1): RtF Framework")
 		fmt.Println("  (2): MFV Noise Estimate")
 		fmt.Println("  (3): Small MFV Batching")
+		fmt.Println("  (4): HEra")
 		fmt.Println("To exit, enter 0.")
 		fmt.Print("Input: ")
-
 		fmt.Scanln(&input)
+
 		if index, err = strconv.Atoi(input); err == nil {
 			switch index {
 			case 0:
@@ -582,6 +583,9 @@ func main() {
 			case 3:
 				fmt.Println()
 				smallBatchMFV()
+			case 4:
+				fmt.Println()
+				testHera()
 			default:
 				fmt.Println(choice)
 			}

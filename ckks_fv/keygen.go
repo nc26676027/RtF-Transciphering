@@ -34,6 +34,7 @@ type KeyGenerator interface {
 	GenRotationIndexesForInnerSumNaive(batch, n int) []int
 
 	GenRotationIndexesForDiagMatrix(matrix *PtDiagMatrix) []int
+	GenRotationIndexesForSlotsToCoeffsMat(matrix [][]*PtDiagMatrixT) []int
 }
 
 // KeyGenerator is a structure that stores the elements required to create new keys,
@@ -371,6 +372,47 @@ func (keygen *keyGenerator) GenRotationIndexesForDiagMatrix(matrix *PtDiagMatrix
 		}
 	}
 
+	return rotKeyIndex
+}
+
+func (keygen *keyGenerator) GenRotationIndexesForSlotsToCoeffsMat(pDcd [][]*PtDiagMatrixT) []int {
+	rotKeyIndex := []int{}
+	for level := range pDcd {
+		for _, matrix := range pDcd[level] {
+			slots := 1 << matrix.LogFVSlots
+
+			var index int
+
+			N1 := matrix.N1
+
+			if len(matrix.Vec) < 3 {
+
+				for j := range matrix.Vec {
+
+					if !utils.IsInSliceInt(j, rotKeyIndex) {
+						rotKeyIndex = append(rotKeyIndex, j)
+					}
+				}
+
+			} else {
+
+				for j := range matrix.Vec {
+
+					index = ((j / N1) * N1) & (slots - 1)
+
+					if index != 0 && !utils.IsInSliceInt(index, rotKeyIndex) {
+						rotKeyIndex = append(rotKeyIndex, index)
+					}
+
+					index = j & (N1 - 1)
+
+					if index != 0 && !utils.IsInSliceInt(index, rotKeyIndex) {
+						rotKeyIndex = append(rotKeyIndex, index)
+					}
+				}
+			}
+		}
+	}
 	return rotKeyIndex
 }
 
