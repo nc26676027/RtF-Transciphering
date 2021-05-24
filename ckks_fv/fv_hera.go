@@ -7,15 +7,21 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-type HEra struct {
-	params   *Parameters
+type MFVHera interface {
+	Init(nonces [][]byte)
+	Crypt() []*Ciphertext
+	KeySchedule(kCt []*Ciphertext)
+	EncKey(key []uint64) (res []*Ciphertext)
+}
+
+type mfvHera struct {
 	numRound int
+	slots    int
 
-	Encoder   MFVEncoder
-	Encryptor MFVEncryptor
-	Decryptor MFVDecryptor
-	Evaluator MFVEvaluator
-
+	params         *Parameters
+	encoder        MFVEncoder
+	encryptor      MFVEncryptor
+	evaluator      MFVEvaluator
 	noiseEstimator MFVNoiseEstimator
 
 	stCt []*Ciphertext
@@ -23,66 +29,53 @@ type HEra struct {
 	rkCt [][]*Ciphertext
 }
 
-func NewHEra(params *Parameters) (hera *HEra) {
-	kgen := NewKeyGenerator(params)
-	sk, pk := kgen.GenKeyPair()
+func NewMFVHera(numRound int, params *Parameters, encoder MFVEncoder, encryptor MFVEncryptor, evaluator MFVEvaluator, noiseEstimator MFVNoiseEstimator) MFVHera {
+	hera := new(mfvHera)
 
-	hera = new(HEra)
+	hera.numRound = numRound
+	hera.slots = params.FVSlots()
 
-	hera.params = params.Copy()
-	hera.numRound = 4
-
-	hera.Encoder = NewMFVEncoder(params)
-	hera.Encryptor = NewMFVEncryptorFromPk(params, pk)
-	hera.Decryptor = NewMFVDecryptor(params, sk)
-	hera.noiseEstimator = NewMFVNoiseEstimator(params, sk)
-	pDcds := hera.Encoder.GenSlotToCoeffMatFV()
-	rotations := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
-
-	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
-	rlk := kgen.GenRelinearizationKey(sk)
-
-	hera.Evaluator = NewMFVEvaluator(params, EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
+	hera.params = params
+	hera.encoder = encoder
+	hera.encryptor = encryptor
+	hera.evaluator = evaluator
+	hera.noiseEstimator = noiseEstimator
 
 	hera.stCt = make([]*Ciphertext, 16)
-	hera.stCt = make([]*Ciphertext, 16)
-	hera.rcPt = make([][]*PlaintextMul, hera.numRound+1)
-	for r := 0; r < hera.numRound+1; r++ {
+	hera.rcPt = make([][]*PlaintextMul, numRound+1)
+
+	for r := 0; r <= numRound; r++ {
 		hera.rcPt[r] = make([]*PlaintextMul, 16)
 		for st := 0; st < 16; st++ {
 			hera.rcPt[r][st] = NewPlaintextMul(params)
 		}
 	}
 
-	hera.rkCt = make([][]*Ciphertext, hera.numRound+1)
-	for r := 0; r < hera.numRound+1; r++ {
+	hera.rkCt = make([][]*Ciphertext, numRound+1)
+	for r := 0; r <= numRound; r++ {
 		hera.rkCt[r] = make([]*Ciphertext, 16)
 	}
-	hera.newHEra()
-	return
-}
 
-// Precompute Initial State
-func (hera *HEra) newHEra() {
-	slots := hera.params.FVSlots()
-
-	st := make([]uint64, slots)
-	stPT := NewPlaintextFV(hera.params)
+	// Precompute Initial States
+	state := make([]uint64, hera.slots)
+	stPT := NewPlaintextFV(params)
 
 	for i := 0; i < 16; i++ {
-		for j := 0; j < slots; j++ {
-			st[j] = uint64(i + 1) // ic = 1, ..., 16
+		for j := 0; j < hera.slots; j++ {
+			state[j] = uint64(i + 1) // ic = 1, ..., 16
 		}
-		hera.Encoder.EncodeUint(st, stPT)
-		hera.stCt[i] = hera.Encryptor.EncryptNew(stPT)
+		encoder.EncodeUint(state, stPT)
+		hera.stCt[i] = encryptor.EncryptNew(stPT)
 	}
+
+	return hera
 }
 
 // Precompute Round Constants
-func (hera *HEra) Init(nonce [][]byte) {
+func (hera *mfvHera) Init(nonce [][]byte) {
 	var err error
 
-	slots := hera.params.FVSlots()
+	slots := hera.slots
 	nr := hera.numRound
 	xof := make([]blake2b.XOF, slots)
 
@@ -107,21 +100,21 @@ func (hera *HEra) Init(nonce [][]byte) {
 				}
 				rc[slot] = binary.LittleEndian.Uint64(intBuffer) + 1
 			}
-			hera.Encoder.EncodeUintMul(rc, hera.rcPt[r][st])
+			hera.encoder.EncodeUintMul(rc, hera.rcPt[r][st])
 		}
 	}
 }
 
-func (hera *HEra) KeySchedule(kCt []*Ciphertext) {
+func (hera *mfvHera) KeySchedule(kCt []*Ciphertext) {
 	for r := 0; r < hera.numRound+1; r++ {
 		for st := 0; st < 16; st++ {
-			hera.rkCt[r][st] = hera.Evaluator.MulNew(kCt[st], hera.rcPt[r][st])
+			hera.rkCt[r][st] = hera.evaluator.MulNew(kCt[st], hera.rcPt[r][st])
 		}
 	}
 }
 
-func (hera *HEra) Crypt(kCt []*Ciphertext) []*Ciphertext {
-	hera.KeySchedule(kCt)
+func (hera *mfvHera) Crypt() []*Ciphertext {
+	// hera.keySchedule(kCt)
 	hera.addRoundKey(0, false)
 
 	for r := 1; r < hera.numRound; r++ {
@@ -136,8 +129,8 @@ func (hera *HEra) Crypt(kCt []*Ciphertext) []*Ciphertext {
 	return hera.stCt
 }
 
-func (hera *HEra) addRoundKey(round int, reduce bool) {
-	ev := hera.Evaluator
+func (hera *mfvHera) addRoundKey(round int, reduce bool) {
+	ev := hera.evaluator
 
 	for st := 0; st < 16; st++ {
 		if reduce {
@@ -148,8 +141,8 @@ func (hera *HEra) addRoundKey(round int, reduce bool) {
 	}
 }
 
-func (hera *HEra) linLayer() {
-	ev := hera.Evaluator
+func (hera *mfvHera) linLayer() {
+	ev := hera.evaluator
 
 	for col := 0; col < 4; col++ {
 		sum := ev.AddNoModNew(hera.stCt[col], hera.stCt[col+4])
@@ -206,8 +199,8 @@ func (hera *HEra) linLayer() {
 	}
 }
 
-func (hera *HEra) cube() {
-	ev := hera.Evaluator
+func (hera *mfvHera) cube() {
+	ev := hera.evaluator
 	for st := 0; st < 16; st++ {
 		x2 := ev.MulNew(hera.stCt[st], hera.stCt[st])
 		y2 := ev.RelinearizeNew(x2)
@@ -216,8 +209,8 @@ func (hera *HEra) cube() {
 	}
 }
 
-func (hera *HEra) EncKey(key []uint64) (res []*Ciphertext) {
-	slots := hera.params.FVSlots()
+func (hera *mfvHera) EncKey(key []uint64) (res []*Ciphertext) {
+	slots := hera.slots
 	res = make([]*Ciphertext, 16)
 
 	for i := 0; i < 16; i++ {
@@ -227,8 +220,8 @@ func (hera *HEra) EncKey(key []uint64) (res []*Ciphertext) {
 		}
 
 		keyPt := NewPlaintextFV(hera.params)
-		hera.Encoder.EncodeUint(dupKey, keyPt)
-		res[i] = hera.Encryptor.EncryptNew(keyPt)
+		hera.encoder.EncodeUint(dupKey, keyPt)
+		res[i] = hera.encryptor.EncryptNew(keyPt)
 	}
 	return
 }

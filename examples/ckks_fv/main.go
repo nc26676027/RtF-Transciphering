@@ -52,8 +52,9 @@ func RtF() {
 	var ckksDecryptor ckks_fv.CKKSDecryptor
 	var fvEvaluator ckks_fv.MFVEvaluator
 	var ckksEvaluator ckks_fv.CKKSEvaluator
-	var plainCKKSRingT *ckks_fv.PlaintextRingT
-	var plaintext *ckks_fv.Plaintext
+	var plainCKKSRingTs []*ckks_fv.PlaintextRingT
+	var plaintexts []*ckks_fv.Plaintext
+	var hera ckks_fv.MFVHera
 
 	// Half-Bootstrapping parameters
 	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
@@ -111,76 +112,135 @@ func RtF() {
 	// Encode float data added by keystream to plaintext coefficients
 	fmt.Println()
 	fmt.Println("Encode random numbers on coefficients...")
-	var data []float64
-	var keystream []uint64
-	coeffs := make([]float64, params.N())
+	var data [][]float64
+	var nonces [][]byte
+	var key []uint64
+	var keystream [][]uint64
 
-	if fullCoeffs {
-		data = make([]float64, params.N())
-		keystream = make([]uint64, params.N())
-		for i := 0; i < params.N(); i++ {
-			data[i] = utils.RandFloat64(-1, 1)
-			keystream[i] = utils.RandUint64() % params.T()
-		}
-
-		for i := 0; i < params.N()/2; i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
-			coeffs[j] = data[i]
-			coeffs[j+uint64(params.N()/2)] = data[i+params.N()/2]
-		}
-
-		plainCKKSRingT = ckksEncoder.EncodeCoeffsRingTNew(coeffs, messageScaling)
-		poly := plainCKKSRingT.Value()[0]
-		for i := 0; i < params.N(); i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
-			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i]) % params.T()
-		}
-	} else {
-		data = make([]float64, params.Slots())
-		keystream = make([]uint64, params.Slots())
-		for i := 0; i < params.Slots(); i++ {
-			data[i] = utils.RandFloat64(-1, 1)
-			keystream[i] = utils.RandUint64() % params.T()
-		}
-
-		for i := 0; i < params.Slots()/2; i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
-			coeffs[j] = data[i]
-			coeffs[j+uint64(params.N()/2)] = data[i+params.Slots()/2]
-		}
-
-		plainCKKSRingT = ckksEncoder.EncodeCoeffsRingTNew(coeffs, messageScaling)
-		poly := plainCKKSRingT.Value()[0]
-		for i := 0; i < params.Slots(); i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
-			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i]) % params.T()
-		}
+	coeffs := make([][]float64, 16)
+	for s := 0; s < 16; s++ {
+		coeffs[s] = make([]float64, params.N())
 	}
 
-	plaintext = ckks_fv.NewPlaintextFV(params)
-	fvEncoder.FVScaleUp(plainCKKSRingT, plaintext)
+	numRound := 4
+	key = make([]uint64, 16)
+	for i := 0; i < 16; i++ {
+		key[i] = uint64(i + 1) // Use (1, ..., 16) for testing
+	}
 
+	if fullCoeffs {
+		data = make([][]float64, 16)
+		for s := 0; s < 16; s++ {
+			data[s] = make([]float64, params.N())
+			for i := 0; i < params.N(); i++ {
+				data[s][i] = utils.RandFloat64(-1, 1)
+			}
+		}
+
+		nonces = make([][]byte, params.N())
+		for i := 0; i < params.N(); i++ {
+			nonces[i] = make([]byte, 64)
+			// rand.Read(nonces[i])
+		}
+
+		keystream = make([][]uint64, params.N())
+		for i := 0; i < params.N(); i++ {
+			keystream[i] = plainHera(numRound, nonces[i], key, params.T())
+		}
+
+		for s := 0; s < 16; s++ {
+			for i := 0; i < params.N()/2; i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+				coeffs[s][j] = data[s][i]
+				coeffs[s][j+uint64(params.N()/2)] = data[s][i+params.N()/2]
+			}
+		}
+
+		plainCKKSRingTs = make([]*ckks_fv.PlaintextRingT, 16)
+		for s := 0; s < 16; s++ {
+			plainCKKSRingTs[s] = ckksEncoder.EncodeCoeffsRingTNew(coeffs[s], messageScaling)
+			poly := plainCKKSRingTs[s].Value()[0]
+			for i := 0; i < params.N(); i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
+				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.T()
+			}
+		}
+	} else {
+		data = make([][]float64, 16)
+		for s := 0; s < 16; s++ {
+			data[s] = make([]float64, params.Slots())
+			for i := 0; i < params.Slots(); i++ {
+				data[s][i] = utils.RandFloat64(-1, 1)
+			}
+		}
+
+		nonces = make([][]byte, params.Slots())
+		for i := 0; i < params.Slots(); i++ {
+			nonces[i] = make([]byte, 64)
+			// rand.Read(nonces[i])
+		}
+
+		keystream = make([][]uint64, params.Slots())
+		for i := 0; i < params.Slots(); i++ {
+			keystream[i] = plainHera(numRound, nonces[i], key, params.T())
+		}
+
+		for s := 0; s < 16; s++ {
+			for i := 0; i < params.Slots()/2; i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+				coeffs[s][j] = data[s][i]
+				coeffs[s][j+uint64(params.N()/2)] = data[s][i+params.Slots()/2]
+			}
+		}
+
+		plainCKKSRingTs = make([]*ckks_fv.PlaintextRingT, 16)
+		for s := 0; s < 16; s++ {
+			plainCKKSRingTs[s] = ckksEncoder.EncodeCoeffsRingTNew(coeffs[s], messageScaling)
+			poly := plainCKKSRingTs[s].Value()[0]
+			for i := 0; i < params.Slots(); i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
+				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.T()
+			}
+		}
+
+	}
+
+	plaintexts = make([]*ckks_fv.Plaintext, 16)
+
+	for s := 0; s < 16; s++ {
+		plaintexts[s] = ckks_fv.NewPlaintextFV(params)
+		fvEncoder.FVScaleUp(plainCKKSRingTs[s], plaintexts[s])
+	}
+
+	hera = ckks_fv.NewMFVHera(numRound, params, fvEncoder, fvEncryptor, fvEvaluator, nil)
+	hera.Init(nonces)
+	kCt := hera.EncKey(key)
+	hera.KeySchedule(kCt)
 	fmt.Println("Done")
 
 	// FV Keystream
 	fmt.Println()
-	fmt.Println("Evaluate FV keystream")
-	pKeystream := ckks_fv.NewPlaintextFV(params)
-	fvEncoder.EncodeUintSmall(keystream, pKeystream)
-	fvKeystream := fvEncryptor.EncryptNew(pKeystream)
-	fvKeystream = fvEvaluator.SlotsToCoeffs(fvKeystream)
-	fvEvaluator.ModSwitchMany(fvKeystream, fvKeystream, fvKeystream.Level())
-	fvEvaluator.TransformToNTT(fvKeystream, fvKeystream)
+	fmt.Println("Evaluate FV keystream by Hera")
+	fvKeystreams := hera.Crypt()
+	for i := 0; i < 16; i++ {
+		fvKeystreams[i] = fvEvaluator.SlotsToCoeffs(fvKeystreams[i])
+		fvEvaluator.ModSwitchMany(fvKeystreams[i], fvKeystreams[i], fvKeystreams[i].Level())
+		fvEvaluator.TransformToNTT(fvKeystreams[i], fvKeystreams[i])
+	}
 	fmt.Println("Done")
 
 	// Encrypt and mod switch to the lowest level
 	fmt.Println()
 	fmt.Println("Encryption and rescaling to level 0...")
-	ciphertext := fvEncryptor.EncryptNew(plaintext)
-	fvEvaluator.ModSwitchMany(ciphertext, ciphertext, ciphertext.Level())
-	fvEvaluator.TransformToNTT(ciphertext, ciphertext)
-	ckksEvaluator.Sub(ciphertext, fvKeystream, ciphertext)
-	ciphertext.SetScale(float64(params.Qi()[0]) / float64(params.T()) * messageScaling)
+	ciphertexts := make([]*ckks_fv.Ciphertext, 16)
+	for s := 0; s < 16; s++ {
+		ciphertexts[s] = fvEncryptor.EncryptNew(plaintexts[s])
+		fvEvaluator.ModSwitchMany(ciphertexts[s], ciphertexts[s], ciphertexts[s].Level())
+		fvEvaluator.TransformToNTT(ciphertexts[s], ciphertexts[s])
+		ckksEvaluator.Sub(ciphertexts[s], fvKeystreams[s], ciphertexts[s])
+		ciphertexts[s].SetScale(float64(params.Qi()[0]) / float64(params.T()) * messageScaling)
+	}
+
 	fmt.Println("Done")
 
 	// Half-Bootstrap the ciphertext (homomorphic evaluation of ModRaise -> SubSum -> CtS -> EvalMod)
@@ -193,36 +253,39 @@ func RtF() {
 	fmt.Println("Half-Bootstrapping...")
 
 	if fullCoeffs {
-		ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertext)
-		fmt.Println("Done")
+		for s := 0; s < 16; s++ {
+			ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertexts[s])
+			fmt.Println("Done")
 
-		valuesWant0 := make([]complex128, params.Slots())
-		valuesWant1 := make([]complex128, params.Slots())
-		for i := 0; i < params.Slots(); i++ {
-			valuesWant0[i] = complex(data[i], 0)
-			valuesWant1[i] = complex(data[i+params.N()/2], 0)
+			valuesWant0 := make([]complex128, params.Slots())
+			valuesWant1 := make([]complex128, params.Slots())
+			for i := 0; i < params.Slots(); i++ {
+				valuesWant0[i] = complex(data[s][i], 0)
+				valuesWant1[i] = complex(data[s][i+params.N()/2], 0)
+			}
+
+			fmt.Println()
+			fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
+			printDebug(params, ctBoot0, valuesWant0, ckksDecryptor, ckksEncoder)
+			printDebug(params, ctBoot1, valuesWant1, ckksDecryptor, ckksEncoder)
 		}
-
-		fmt.Println()
-		fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
-		printDebug(params, ctBoot0, valuesWant0, ckksDecryptor, ckksEncoder)
-		printDebug(params, ctBoot1, valuesWant1, ckksDecryptor, ckksEncoder)
-
 	} else {
-		ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertext)
-		fmt.Println("Done")
+		for s := 0; s < 16; s++ {
+			ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertexts[s])
+			fmt.Println("Done")
 
-		valuesWant := make([]complex128, params.Slots())
-		for i := 0; i < params.Slots(); i++ {
-			valuesWant[i] = complex(data[i], 0)
+			valuesWant := make([]complex128, params.Slots())
+			for i := 0; i < params.Slots(); i++ {
+				valuesWant[i] = complex(data[s][i], 0)
+			}
+
+			ctBoot := ckksEvaluator.RotateNew(ctBoot1, params.Slots()/2)
+			ckksEvaluator.Add(ctBoot, ctBoot0, ctBoot)
+
+			fmt.Println()
+			fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
+			printDebug(params, ctBoot, valuesWant, ckksDecryptor, ckksEncoder)
 		}
-
-		ctBoot := ckksEvaluator.RotateNew(ctBoot1, params.Slots()/2)
-		ckksEvaluator.Add(ctBoot, ctBoot0, ctBoot)
-
-		fmt.Println()
-		fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
-		printDebug(params, ctBoot, valuesWant, ckksDecryptor, ckksEncoder)
 	}
 	fmt.Println()
 }

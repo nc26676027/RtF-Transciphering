@@ -14,7 +14,6 @@ func testHera() {
 	slots := params.FVSlots()
 
 	nonces := make([][]byte, slots)
-
 	for i := 0; i < slots; i++ {
 		nonces[i] = make([]byte, 64)
 	}
@@ -26,18 +25,35 @@ func testHera() {
 
 	keystream := plainHera(4, nonces[0], key, params.T())
 
-	hera := ckks_fv.NewHEra(params)
+	kgen := ckks_fv.NewKeyGenerator(params)
+
+	sk, pk := kgen.GenKeyPair()
+
+	fvEncoder := ckks_fv.NewMFVEncoder(params)
+	fvEncryptor := ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	fvDecryptor := ckks_fv.NewMFVDecryptor(params, sk)
+
+	pDcds := fvEncoder.GenSlotToCoeffMatFV()
+	rotations := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	rlk := kgen.GenRelinearizationKey(sk)
+
+	fvEvaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
+	fvNoiseEstimator := ckks_fv.NewMFVNoiseEstimator(params, sk)
+
+	hera := ckks_fv.NewMFVHera(4, params, fvEncoder, fvEncryptor, fvEvaluator, fvNoiseEstimator)
 	hera.Init(nonces)
 
 	heKey := hera.EncKey(key)
-	stCt := hera.Crypt(heKey)
+	hera.KeySchedule(heKey)
+	stCt := hera.Crypt()
 
 	for i := 0; i < 16; i++ {
-		ksSlot := hera.Evaluator.SlotsToCoeffs(stCt[i])
-		ksCt := hera.Decryptor.DecryptNew(ksSlot)
+		ksSlot := fvEvaluator.SlotsToCoeffs(stCt[i])
+		ksCt := fvDecryptor.DecryptNew(ksSlot)
 		ksCoef := ckks_fv.NewPlaintextRingT(params)
-		hera.Encoder.DecodeRingT(ksCt, ksCoef)
-		fmt.Printf("%5v (== %5v)\n", *&ksCoef.Element.Value()[0].Coeffs[0][0], keystream[i])
+		fvEncoder.DecodeRingT(ksCt, ksCoef)
+		fmt.Printf("%5v (== %5v)\n", ksCoef.Element.Value()[0].Coeffs[0][0], keystream[i])
 	}
 }
 
