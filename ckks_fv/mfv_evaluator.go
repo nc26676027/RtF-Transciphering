@@ -1384,7 +1384,7 @@ func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) (ctOut *Ciphertext) {
 			continue
 		}
 
-		ctOut = eval.LinearTransform(ct, pVec)[0]
+		ctOut = eval.LinearTransform(ctOut, pVec)[0]
 	}
 
 	tmp := eval.RotateRowsNew(ctOut)
