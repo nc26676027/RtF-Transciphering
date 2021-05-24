@@ -1363,8 +1363,13 @@ func (eval *mfvEvaluator) TransformToNTT(ct0 *Ciphertext, ctOut *Ciphertext) {
 		panic("cannot TransformToNTT: input and output must have the same degree")
 	}
 
+	if ct0.Level() != ctOut.Level() {
+		panic("cannot TransformToNTT: input and output must have the same level")
+	}
+
+	level := ct0.Level()
 	for i := range ct0.value {
-		eval.ringQ.NTT(ct0.value[i], ctOut.value[i])
+		eval.ringQs[level].NTT(ct0.value[i], ctOut.value[i])
 	}
 
 	ctOut.SetIsNTT(true)

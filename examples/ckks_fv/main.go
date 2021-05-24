@@ -67,9 +67,15 @@ func RtF() {
 	if err != nil {
 		panic(err)
 	}
-	params.SetLogFVSlots(params.LogN())
 	messageScaling := float64(params.T()) / (2 * hbtpParams.MessageRatio)
-	// messageScaling := float64(params.T()) / float64(1<<11)
+
+	fullCoeffs := false
+	fullCoeffs = fullCoeffs && (params.LogN() == params.LogSlots()+1)
+	if fullCoeffs {
+		params.SetLogFVSlots(params.LogN())
+	} else {
+		params.SetLogFVSlots(params.LogSlots())
+	}
 
 	fmt.Println()
 	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), hbtpParams.H, params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
@@ -86,7 +92,10 @@ func RtF() {
 
 	fmt.Println()
 	fmt.Println("Generating half-bootstrapping keys...")
-	rotations := kgen.GenRotationIndexesForHalfBoot(params.LogSlots(), hbtpParams)
+	rotationsHalfBoot := kgen.GenRotationIndexesForHalfBoot(params.LogSlots(), hbtpParams)
+	pDcds := fvEncoder.GenSlotToCoeffMatFV()
+	rotationsStC := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
+	rotations := append(rotationsHalfBoot, rotationsStC...)
 	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
 	rlk := kgen.GenRelinearizationKey(sk)
 	hbtpKey := ckks_fv.BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
@@ -95,7 +104,8 @@ func RtF() {
 		panic(err)
 	}
 	fmt.Println("Done")
-	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{}, nil)
+
+	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
 	ckksEvaluator = ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
 
 	// Encode float data added by keystream to plaintext coefficients
@@ -105,8 +115,6 @@ func RtF() {
 	var keystream []uint64
 	coeffs := make([]float64, params.N())
 
-	fullCoeffs := true
-	fullCoeffs = fullCoeffs && (params.LogN() == params.LogSlots()+1)
 	if fullCoeffs {
 		data = make([]float64, params.N())
 		keystream = make([]uint64, params.N())
@@ -118,16 +126,14 @@ func RtF() {
 		for i := 0; i < params.N()/2; i++ {
 			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
 			coeffs[j] = data[i]
-			coeffs[uint64(params.N()/2)+j] = data[i+params.N()/2]
+			coeffs[j+uint64(params.N()/2)] = data[i+params.N()/2]
 		}
 
 		plainCKKSRingT = ckksEncoder.EncodeCoeffsRingTNew(coeffs, messageScaling)
 		poly := plainCKKSRingT.Value()[0]
-		for i := 0; i < params.N()/2; i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+		for i := 0; i < params.N(); i++ {
+			j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
 			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i]) % params.T()
-			j = j + uint64(params.N()/2)
-			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i+params.N()/2]) % params.T()
 		}
 	} else {
 		data = make([]float64, params.Slots())
@@ -137,15 +143,16 @@ func RtF() {
 			keystream[i] = utils.RandUint64() % params.T()
 		}
 
-		for i := 0; i < params.Slots(); i++ {
+		for i := 0; i < params.Slots()/2; i++ {
 			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
 			coeffs[j] = data[i]
+			coeffs[j+uint64(params.N()/2)] = data[i+params.Slots()/2]
 		}
 
 		plainCKKSRingT = ckksEncoder.EncodeCoeffsRingTNew(coeffs, messageScaling)
 		poly := plainCKKSRingT.Value()[0]
 		for i := 0; i < params.Slots(); i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+			j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
 			poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i]) % params.T()
 		}
 	}
@@ -159,31 +166,19 @@ func RtF() {
 	fmt.Println()
 	fmt.Println("Evaluate FV keystream")
 	pKeystream := ckks_fv.NewPlaintextFV(params)
-	pKeystreamRingT := ckks_fv.NewPlaintextRingT(params)
-	if fullCoeffs {
-		for i := 0; i < params.N()/2; i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
-			pKeystreamRingT.Value()[0].Coeffs[0][j] = keystream[i]
-			pKeystreamRingT.Value()[0].Coeffs[0][j+uint64(params.N()/2)] = keystream[i+params.N()/2]
-		}
-	} else {
-		for i := 0; i < params.Slots(); i++ {
-			j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
-			pKeystreamRingT.Value()[0].Coeffs[0][j] = keystream[i]
-		}
-	}
-	fvEncoder.FVScaleUp(pKeystreamRingT, pKeystream)
+	fvEncoder.EncodeUintSmall(keystream, pKeystream)
 	fvKeystream := fvEncryptor.EncryptNew(pKeystream)
+	fvKeystream = fvEvaluator.SlotsToCoeffs(fvKeystream)
+	fvEvaluator.ModSwitchMany(fvKeystream, fvKeystream, fvKeystream.Level())
 	fvEvaluator.TransformToNTT(fvKeystream, fvKeystream)
-	ckksEvaluator.RescaleMany(fvKeystream, fvKeystream.Level(), fvKeystream)
 	fmt.Println("Done")
 
-	// Encrypt and rescale to the lowest level
+	// Encrypt and mod switch to the lowest level
 	fmt.Println()
 	fmt.Println("Encryption and rescaling to level 0...")
 	ciphertext := fvEncryptor.EncryptNew(plaintext)
+	fvEvaluator.ModSwitchMany(ciphertext, ciphertext, ciphertext.Level())
 	fvEvaluator.TransformToNTT(ciphertext, ciphertext)
-	ckksEvaluator.RescaleMany(ciphertext, ciphertext.Level(), ciphertext)
 	ckksEvaluator.Sub(ciphertext, fvKeystream, ciphertext)
 	ciphertext.SetScale(float64(params.Qi()[0]) / float64(params.T()) * messageScaling)
 	fmt.Println("Done")
@@ -214,7 +209,7 @@ func RtF() {
 		printDebug(params, ctBoot1, valuesWant1, ckksDecryptor, ckksEncoder)
 
 	} else {
-		ctBoot, _ := hbtp.HalfBoot(ciphertext)
+		ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertext)
 		fmt.Println("Done")
 
 		valuesWant := make([]complex128, params.Slots())
@@ -222,10 +217,14 @@ func RtF() {
 			valuesWant[i] = complex(data[i], 0)
 		}
 
+		ctBoot := ckksEvaluator.RotateNew(ctBoot1, params.Slots()/2)
+		ckksEvaluator.Add(ctBoot, ctBoot0, ctBoot)
+
 		fmt.Println()
 		fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")
 		printDebug(params, ctBoot, valuesWant, ckksDecryptor, ckksEncoder)
 	}
+	fmt.Println()
 }
 
 func fvNoiseBudget() {
@@ -559,7 +558,7 @@ func main() {
 	var index int
 	var err error
 
-	choice := "Choose one of 0, 1, 2, 3, 4, 5.\n"
+	choice := "Choose one of 0, 1, 2, 3, 4.\n"
 	for true {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): RtF Framework")
