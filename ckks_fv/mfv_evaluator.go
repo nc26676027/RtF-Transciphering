@@ -50,7 +50,7 @@ type MFVEvaluator interface {
 	TransformToNTT(ct0, ctOut *Ciphertext)
 
 	// Linear Transformation
-	SlotsToCoeffs(ct *Ciphertext) *Ciphertext
+	SlotsToCoeffs(ct *Ciphertext) (ctOut *Ciphertext)
 	LinearTransform(vec *Ciphertext, linearTransform interface{}) (res []*Ciphertext)
 	MultiplyByDiabMatrix(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
 	MultiplyByDiabMatrixNaive(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
@@ -1370,11 +1370,12 @@ func (eval *mfvEvaluator) TransformToNTT(ct0 *Ciphertext, ctOut *Ciphertext) {
 	ctOut.SetIsNTT(true)
 }
 
-func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) *Ciphertext {
+func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) (ctOut *Ciphertext) {
 	if eval.pDcds == nil {
 		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
 	}
 
+	ctOut = ct.CopyNew().Ciphertext()
 	depth := eval.params.logFVSlots
 
 	level := ct.Level()
@@ -1383,14 +1384,13 @@ func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) *Ciphertext {
 			continue
 		}
 
-		ct = eval.LinearTransform(ct, pVec)[0]
+		ctOut = eval.LinearTransform(ct, pVec)[0]
 	}
 
-	tmp := eval.RotateRowsNew(ct)
-	ct0 := eval.LinearTransform(ct, eval.pDcds[level][depth-1])[0]
-	ct1 := eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
+	tmp := eval.RotateRowsNew(ctOut)
+	ctOut = eval.LinearTransform(ctOut, eval.pDcds[level][depth-1])[0]
+	tmp = eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
 
-	ct = eval.AddNew(ct0, ct1)
-
-	return ct
+	ctOut = eval.AddNew(tmp, ctOut)
+	return
 }
