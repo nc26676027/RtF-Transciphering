@@ -2,7 +2,6 @@ package ckks_fv
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math/bits"
 
 	"golang.org/x/crypto/blake2b"
@@ -134,17 +133,7 @@ func (hera *HEra) Crypt(kCt []*Ciphertext) []*Ciphertext {
 	hera.cube()
 	hera.linLayer()
 	hera.addRoundKey(hera.numRound, true)
-	fmt.Printf("Budget Left : %d\n", hera.noiseEstimator.InvariantNoiseBudget(hera.stCt[0]))
 	return hera.stCt
-
-	/*
-		out := make([]*Ciphertext, 16)
-		for i := 0; i < 16; i++ {
-			out[i] = hera.Evaluator.SlotsToCoeffs(hera.stCt[i])
-			fmt.Printf("Budget Left : %d\n", hera.noiseEstimator.InvariantNoiseBudget(out[i]))
-		}
-		return out
-	*/
 }
 
 func (hera *HEra) addRoundKey(round int, reduce bool) {

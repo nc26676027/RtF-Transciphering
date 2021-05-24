@@ -32,20 +32,13 @@ func testHera() {
 	heKey := hera.EncKey(key)
 	stCt := hera.Crypt(heKey)
 
-	check := true
 	for i := 0; i < 16; i++ {
-		decrypted := hera.Decryptor.DecryptNew(stCt[i])
-		decoded := hera.Encoder.DecodeUintNew(decrypted)
-
-		fmt.Printf("%v (== %v)\n", decoded[0], keystream[i])
-
-		if decoded[0] != keystream[i] {
-			check = false
-		}
-		// fmt.Printf("%v\n", decrypted.Element.Value()[0])
+		ksSlot := hera.Evaluator.SlotsToCoeffs(stCt[i])
+		ksCt := hera.Decryptor.DecryptNew(ksSlot)
+		ksCoef := ckks_fv.NewPlaintextRingT(params)
+		hera.Encoder.DecodeRingT(ksCt, ksCoef)
+		fmt.Printf("%5v (== %5v)\n", *&ksCoef.Element.Value()[0].Coeffs[0][0], keystream[i])
 	}
-
-	fmt.Printf("Hera correct ? %v\n", check)
 }
 
 func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint64) {
