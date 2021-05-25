@@ -2,9 +2,7 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"fmt"
-	"math/bits"
 
 	"github.com/ldsec/lattigo/v2/ckks_fv"
 	"github.com/ldsec/lattigo/v2/utils"
@@ -68,28 +66,21 @@ func testHera() {
 		for j := 0; j < slots; j++ {
 			fmt.Printf("%5v ", keystreams[j][i])
 		}
-		fmt.Println("\n")
+		fmt.Print("\n\n")
 	}
 }
 
 func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint64) {
 	nr := roundNum
-	bsize := (bits.Len64(t-2) + 7) / 8
-	xof, _ := blake2b.NewXOF(uint32(bsize*(nr+1)*16), nonce)
+	xof, _ := blake2b.NewXOF(blake2b.OutputLengthUnknown, nonce)
 	state = make([]uint64, 16)
 
-	bufferN := make([]byte, bsize)
-	intBuffer := make([]byte, 8)
 	rks := make([][]uint64, nr+1)
 
 	for r := 0; r <= nr; r++ {
 		rks[r] = make([]uint64, 16)
 		for st := 0; st < 16; st++ {
-			xof.Read(bufferN)
-			for c := 0; c < bsize; c++ {
-				intBuffer[c] = bufferN[c]
-			}
-			rks[r][st] = (binary.LittleEndian.Uint64(intBuffer) + 1) * key[st] % t
+			rks[r][st] = ckks_fv.SampleZtx(xof, t) * key[st] % t
 		}
 	}
 

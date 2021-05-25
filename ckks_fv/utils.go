@@ -1,11 +1,43 @@
 package ckks_fv
 
 import (
+	"fmt"
+	"io"
 	"math"
 	"math/big"
+	"math/bits"
 
 	"github.com/ldsec/lattigo/v2/ring"
 )
+
+// Returns uniform random value in (0,t) by rejection sampling
+func SampleZtx(rand io.Reader, t uint64) (res uint64) {
+	bitLen := bits.Len64(t - 2)
+	byteLen := (bitLen + 7) / 8
+	b := bitLen % 8
+	if b == 0 {
+		b = 8
+	}
+
+	bytes := make([]byte, byteLen)
+	for {
+		_, err := io.ReadFull(rand, bytes)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("%v, %v\n", bytes, t)
+		bytes[byteLen-1] &= uint8((1 << b) - 1)
+
+		res = 1
+		for i := 0; i < byteLen; i++ {
+			res += uint64(bytes[i]) << (8 * i)
+		}
+
+		if res < t {
+			return
+		}
+	}
+}
 
 // StandardDeviation computes the scaled standard deviation of the input vector.
 func StandardDeviation(vec []float64, scale float64) (std float64) {

@@ -1,8 +1,7 @@
 package ckks_fv
 
 import (
-	"encoding/binary"
-	"math/bits"
+	"fmt"
 
 	"golang.org/x/crypto/blake2b"
 )
@@ -10,7 +9,7 @@ import (
 type MFVHera interface {
 	Init(nonces [][]byte)
 	Crypt() []*Ciphertext
-	KeySchedule(kCt []*Ciphertext)
+	KeySchedule(kCt []*Ciphertext) (rkCt [][]*Ciphertext)
 	EncKey(key []uint64) (res []*Ciphertext)
 }
 
@@ -79,38 +78,32 @@ func (hera *mfvHera) Init(nonce [][]byte) {
 	nr := hera.numRound
 	xof := make([]blake2b.XOF, slots)
 
-	bsize := (bits.Len64(hera.params.T()-2) + 7) / 8
-
 	for i := 0; i < slots; i++ {
-		if xof[i], err = blake2b.NewXOF(uint32(bsize*(nr+1)*16), nonce[i]); err != nil {
+		if xof[i], err = blake2b.NewXOF(blake2b.OutputLengthUnknown, nonce[i]); err != nil {
 			panic("blake2b error")
 		}
 	}
 
-	bufferN := make([]byte, bsize)
-	intBuffer := make([]byte, 8)
 	rc := make([]uint64, slots)
 
 	for r := 0; r <= nr; r++ {
 		for st := 0; st < 16; st++ {
 			for slot := 0; slot < slots; slot++ {
-				xof[slot].Read(bufferN)
-				for c := 0; c < bsize; c++ {
-					intBuffer[c] = bufferN[c]
-				}
-				rc[slot] = binary.LittleEndian.Uint64(intBuffer) + 1
+				rc[slot] = SampleZtx(xof[slot], hera.params.T())
+				fmt.Printf("rc[%d] = %v\n", slot, rc[slot])
 			}
 			hera.encoder.EncodeUintMulSmall(rc, hera.rcPt[r][st])
 		}
 	}
 }
 
-func (hera *mfvHera) KeySchedule(kCt []*Ciphertext) {
+func (hera *mfvHera) KeySchedule(kCt []*Ciphertext) (rkCt [][]*Ciphertext) {
 	for r := 0; r < hera.numRound+1; r++ {
 		for st := 0; st < 16; st++ {
 			hera.rkCt[r][st] = hera.evaluator.MulNew(kCt[st], hera.rcPt[r][st])
 		}
 	}
+	return hera.rkCt
 }
 
 func (hera *mfvHera) Crypt() []*Ciphertext {
