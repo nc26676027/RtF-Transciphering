@@ -368,7 +368,6 @@ func smallBatchMFV() {
 	params := ckks_fv.DefaultFVParams[8]
 	logFVSlots := params.LogFVSlots()
 	FVSlots := params.FVSlots()
-	fmt.Printf("params.logFVSlots: %d\n", logFVSlots)
 	encoder := ckks_fv.NewMFVEncoder(params)
 
 	kgen := ckks_fv.NewKeyGenerator(params)
@@ -390,17 +389,23 @@ func smallBatchMFV() {
 		data2[i] = uint64(2 * i)
 	}
 
-	plaintext1 := ckks_fv.NewPlaintextFV(params)
-	plaintext2 := ckks_fv.NewPlaintextFV(params)
+	// Test Enc on smaller level
+	fmt.Println("Encryption on smaller level...")
+	plaintext1 := ckks_fv.NewPlaintextFVLvl(params, params.MaxLevel()-3)
+	plaintext2 := ckks_fv.NewPlaintextFVLvl(params, params.MaxLevel()-3)
 	encoder.EncodeUintSmall(data1, plaintext1)
 	encoder.EncodeUintSmall(data2, plaintext2)
 
 	ciphertext1 := encryptor.EncryptNew(plaintext1)
 	ciphertext2 := encryptor.EncryptNew(plaintext2)
 
+	// Test ModSwitch
+	fmt.Println("ModSwitch...")
 	evaluator.ModSwitch(ciphertext1, ciphertext1)
 	evaluator.ModSwitch(ciphertext1, ciphertext1)
 	evaluator.ModSwitchMany(ciphertext2, ciphertext2, 2)
+	fmt.Println("Done")
+	fmt.Println()
 
 	var ciphertext, tmp1, tmp2 *ckks_fv.Ciphertext
 	var decrypted *ckks_fv.Plaintext
