@@ -208,7 +208,7 @@ func RtF() {
 	plaintexts = make([]*ckks_fv.Plaintext, 16)
 
 	for s := 0; s < 16; s++ {
-		plaintexts[s] = ckks_fv.NewPlaintextFV(params)
+		plaintexts[s] = ckks_fv.NewPlaintextFVLvl(params, 0)
 		fvEncoder.FVScaleUp(plainCKKSRingTs[s], plaintexts[s])
 	}
 
@@ -225,7 +225,6 @@ func RtF() {
 	for i := 0; i < 16; i++ {
 		fvKeystreams[i] = fvEvaluator.SlotsToCoeffs(fvKeystreams[i])
 		fvEvaluator.ModSwitchMany(fvKeystreams[i], fvKeystreams[i], fvKeystreams[i].Level())
-		fvEvaluator.TransformToNTT(fvKeystreams[i], fvKeystreams[i])
 	}
 	fmt.Println("Done")
 
@@ -234,10 +233,10 @@ func RtF() {
 	fmt.Println("Encryption and rescaling to level 0...")
 	ciphertexts := make([]*ckks_fv.Ciphertext, 16)
 	for s := 0; s < 16; s++ {
-		ciphertexts[s] = fvEncryptor.EncryptNew(plaintexts[s])
-		fvEvaluator.ModSwitchMany(ciphertexts[s], ciphertexts[s], ciphertexts[s].Level())
+		ciphertexts[s] = ckks_fv.NewCiphertextFVLvl(params, 1, 0)
+		ciphertexts[s].Value()[0] = plaintexts[s].Value()[0].CopyNew()
+		fvEvaluator.Sub(ciphertexts[s], fvKeystreams[s], ciphertexts[s])
 		fvEvaluator.TransformToNTT(ciphertexts[s], ciphertexts[s])
-		ckksEvaluator.Sub(ciphertexts[s], fvKeystreams[s], ciphertexts[s])
 		ciphertexts[s].SetScale(float64(params.Qi()[0]) / float64(params.T()) * messageScaling)
 	}
 
