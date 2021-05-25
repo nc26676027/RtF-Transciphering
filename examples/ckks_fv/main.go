@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math"
 	"strconv"
@@ -63,7 +64,7 @@ func RtF() {
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.DefaultHalfBootParams[0]
+	hbtpParams := ckks_fv.RtFParams[0]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
@@ -140,7 +141,7 @@ func RtF() {
 		nonces = make([][]byte, params.N())
 		for i := 0; i < params.N(); i++ {
 			nonces[i] = make([]byte, 64)
-			// rand.Read(nonces[i])
+			rand.Read(nonces[i])
 		}
 
 		keystream = make([][]uint64, params.N())
@@ -177,7 +178,7 @@ func RtF() {
 		nonces = make([][]byte, params.Slots())
 		for i := 0; i < params.Slots(); i++ {
 			nonces[i] = make([]byte, 64)
-			// rand.Read(nonces[i])
+			rand.Read(nonces[i])
 		}
 
 		keystream = make([][]uint64, params.Slots())

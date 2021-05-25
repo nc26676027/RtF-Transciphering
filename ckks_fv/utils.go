@@ -1,7 +1,6 @@
 package ckks_fv
 
 import (
-	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -25,7 +24,6 @@ func SampleZtx(rand io.Reader, t uint64) (res uint64) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("%v, %v\n", bytes, t)
 		bytes[byteLen-1] &= uint8((1 << b) - 1)
 
 		res = 1

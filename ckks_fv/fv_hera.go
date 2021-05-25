@@ -1,8 +1,6 @@
 package ckks_fv
 
 import (
-	"fmt"
-
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -90,7 +88,6 @@ func (hera *mfvHera) Init(nonce [][]byte) {
 		for st := 0; st < 16; st++ {
 			for slot := 0; slot < slots; slot++ {
 				rc[slot] = SampleZtx(xof[slot], hera.params.T())
-				fmt.Printf("rc[%d] = %v\n", slot, rc[slot])
 			}
 			hera.encoder.EncodeUintMulSmall(rc, hera.rcPt[r][st])
 		}
