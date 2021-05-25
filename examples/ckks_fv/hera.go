@@ -1,11 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"math/bits"
 
 	"github.com/ldsec/lattigo/v2/ckks_fv"
+	"github.com/ldsec/lattigo/v2/utils"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -16,6 +18,7 @@ func testHera() {
 	nonces := make([][]byte, slots)
 	for i := 0; i < slots; i++ {
 		nonces[i] = make([]byte, 64)
+		rand.Read(nonces[i])
 	}
 
 	key := make([]uint64, 16)
@@ -23,7 +26,10 @@ func testHera() {
 		key[i] = uint64(i + 16)
 	}
 
-	keystream := plainHera(4, nonces[0], key, params.T())
+	keystreams := make([][]uint64, slots)
+	for i := 0; i < slots; i++ {
+		keystreams[i] = plainHera(4, nonces[i], key, params.T())
+	}
 
 	kgen := ckks_fv.NewKeyGenerator(params)
 
@@ -53,7 +59,16 @@ func testHera() {
 		ksCt := fvDecryptor.DecryptNew(ksSlot)
 		ksCoef := ckks_fv.NewPlaintextRingT(params)
 		fvEncoder.DecodeRingT(ksCt, ksCoef)
-		fmt.Printf("%5v (== %5v)\n", ksCoef.Element.Value()[0].Coeffs[0][0], keystream[i])
+
+		for j := 0; j < slots; j++ {
+			br_j := utils.BitReverse64(uint64(j), uint64(params.LogN()))
+			fmt.Printf("%5v ", ksCoef.Element.Value()[0].Coeffs[0][br_j])
+		}
+		fmt.Println("==")
+		for j := 0; j < slots; j++ {
+			fmt.Printf("%5v ", keystreams[j][i])
+		}
+		fmt.Println("\n")
 	}
 }
 

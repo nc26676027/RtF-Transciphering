@@ -64,7 +64,7 @@ func NewMFVHera(numRound int, params *Parameters, encoder MFVEncoder, encryptor 
 		for j := 0; j < hera.slots; j++ {
 			state[j] = uint64(i + 1) // ic = 1, ..., 16
 		}
-		encoder.EncodeUint(state, stPT)
+		encoder.EncodeUintSmall(state, stPT)
 		hera.stCt[i] = encryptor.EncryptNew(stPT)
 	}
 
@@ -100,7 +100,7 @@ func (hera *mfvHera) Init(nonce [][]byte) {
 				}
 				rc[slot] = binary.LittleEndian.Uint64(intBuffer) + 1
 			}
-			hera.encoder.EncodeUintMul(rc, hera.rcPt[r][st])
+			hera.encoder.EncodeUintMulSmall(rc, hera.rcPt[r][st])
 		}
 	}
 }
@@ -220,7 +220,7 @@ func (hera *mfvHera) EncKey(key []uint64) (res []*Ciphertext) {
 		}
 
 		keyPt := NewPlaintextFV(hera.params)
-		hera.encoder.EncodeUint(dupKey, keyPt)
+		hera.encoder.EncodeUintSmall(dupKey, keyPt)
 		res[i] = hera.encryptor.EncryptNew(keyPt)
 	}
 	return
