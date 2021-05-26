@@ -50,7 +50,9 @@ type MFVEvaluator interface {
 	TransformToNTT(ct0, ctOut *Ciphertext)
 
 	// Linear Transformation
-	SlotsToCoeffs(ct *Ciphertext) (ctOut *Ciphertext)
+	SlotsToCoeffs(ct *Ciphertext, stcModDown []int) (ctOut *Ciphertext)
+	SlotsToCoeffsNoModSwitch(ct *Ciphertext) (ctOut *Ciphertext)
+	SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext)
 	LinearTransform(vec *Ciphertext, linearTransform interface{}) (res []*Ciphertext)
 	MultiplyByDiabMatrix(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
 	MultiplyByDiabMatrixNaive(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
@@ -1375,21 +1377,45 @@ func (eval *mfvEvaluator) TransformToNTT(ct0 *Ciphertext, ctOut *Ciphertext) {
 	ctOut.SetIsNTT(true)
 }
 
-func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) (ctOut *Ciphertext) {
+func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext, stcModDown []int) (ctOut *Ciphertext) {
 	if eval.pDcds == nil {
 		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
 	}
 
 	ctOut = ct.CopyNew().Ciphertext()
-	depth := eval.params.logFVSlots
+
+	level := ctOut.Level()
+	depth := len(eval.pDcds[level]) - 1
+	for i := 0; i < depth-1; i++ {
+		if stcModDown[i] > 0 {
+			eval.ModSwitchMany(ctOut, ctOut, stcModDown[i])
+		}
+		level = ctOut.Level()
+		ctOut = eval.LinearTransform(ctOut, eval.pDcds[level][i])[0]
+	}
+	if stcModDown[depth-1] > 0 {
+		eval.ModSwitchMany(ctOut, ctOut, stcModDown[depth-1])
+	}
+	level = ctOut.Level()
+	tmp := eval.RotateRowsNew(ctOut)
+	ctOut = eval.LinearTransform(ctOut, eval.pDcds[level][depth-1])[0]
+	tmp = eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
+
+	ctOut = eval.AddNew(tmp, ctOut)
+	return
+}
+
+func (eval *mfvEvaluator) SlotsToCoeffsNoModSwitch(ct *Ciphertext) (ctOut *Ciphertext) {
+	if eval.pDcds == nil {
+		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
+	}
+
+	ctOut = ct.CopyNew().Ciphertext()
 
 	level := ct.Level()
-	for i, pVec := range eval.pDcds[level] {
-		if i >= depth-1 {
-			continue
-		}
-
-		ctOut = eval.LinearTransform(ctOut, pVec)[0]
+	depth := len(eval.pDcds[level]) - 1
+	for i := 0; i < depth-1; i++ {
+		ctOut = eval.LinearTransform(ctOut, eval.pDcds[level][i])[0]
 	}
 
 	tmp := eval.RotateRowsNew(ctOut)
@@ -1397,5 +1423,69 @@ func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext) (ctOut *Ciphertext) {
 	tmp = eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
 
 	ctOut = eval.AddNew(tmp, ctOut)
+	return
+}
+
+func (eval *mfvEvaluator) findBudgetInfo(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (invBudget, errorBits int) {
+	T := ring.NewUint(eval.params.T())
+	invBudget = noiseEstimator.InvariantNoiseBudget(ct)
+	errorBits = eval.params.LogQLvl(ct.Level()) - T.BitLen() - invBudget
+	return
+}
+
+func (eval *mfvEvaluator) modSwitchAuto(ct *Ciphertext, noiseEstimator MFVNoiseEstimator, depth int, stcModDown []int) {
+	lvl := ct.Level()
+
+	QiLvl := eval.params.Qi()[:lvl+1]
+	LogQiLvl := make([]int, lvl+1)
+	for i := 0; i < lvl+1; i++ {
+		LogQiLvl[i] = int(math.Round(math.Log2(float64(QiLvl[i]))))
+	}
+
+	invBudgetOld, errorBitsOld := eval.findBudgetInfo(ct, noiseEstimator)
+	nbModSwitch, targetErrorBits := 0, errorBitsOld
+	for {
+		targetErrorBits -= LogQiLvl[lvl-nbModSwitch]
+		if targetErrorBits > 1 {
+			nbModSwitch++
+		} else {
+			break
+		}
+	}
+	stcModDown[depth] = nbModSwitch
+	if nbModSwitch != 0 {
+		eval.ModSwitchMany(ct, ct, nbModSwitch)
+	}
+
+	invBudgetNew, errorBitsNew := eval.findBudgetInfo(ct, noiseEstimator)
+	fmt.Printf("StC Depth %d [Budget | Error] : [%v | %v] -> [%v | %v]\n", depth, invBudgetOld, errorBitsOld, invBudgetNew, errorBitsNew)
+	fmt.Printf("StC modDown : %v\n\n", stcModDown)
+}
+
+func (eval *mfvEvaluator) SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext) {
+	if eval.pDcds == nil {
+		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
+	}
+
+	ctOut = ct.CopyNew().Ciphertext()
+	level := ct.Level()
+	depth := len(eval.pDcds[level]) - 1
+
+	stcModDown := make([]int, depth)
+	for i := 0; i < depth-1; i++ {
+		eval.modSwitchAuto(ctOut, noiseEstimator, i, stcModDown)
+		level = ctOut.Level()
+		ctOut = eval.LinearTransform(ctOut, eval.pDcds[level][i])[0]
+	}
+	eval.modSwitchAuto(ctOut, noiseEstimator, depth-1, stcModDown)
+	level = ctOut.Level()
+	tmp := eval.RotateRowsNew(ctOut)
+	ctOut = eval.LinearTransform(ctOut, eval.pDcds[level][depth-1])[0]
+	tmp = eval.LinearTransform(tmp, eval.pDcds[level][depth])[0]
+
+	ctOut = eval.AddNew(tmp, ctOut)
+	invBudget, errorBits := eval.findBudgetInfo(ctOut, noiseEstimator)
+	fmt.Printf("StC Final [Budget | Error] : [%v | %v]\n", invBudget, errorBits)
+	fmt.Printf("StC modDown : %v\n\n", stcModDown)
 	return
 }
