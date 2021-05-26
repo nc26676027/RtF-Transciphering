@@ -52,7 +52,6 @@ func RtF() {
 	var fvEncryptor ckks_fv.MFVEncryptor
 	var ckksDecryptor ckks_fv.CKKSDecryptor
 	var fvEvaluator ckks_fv.MFVEvaluator
-	var ckksEvaluator ckks_fv.CKKSEvaluator
 	var plainCKKSRingTs []*ckks_fv.PlaintextRingT
 	var plaintexts []*ckks_fv.Plaintext
 	var hera ckks_fv.MFVHera
@@ -71,7 +70,7 @@ func RtF() {
 	}
 	messageScaling := float64(params.T()) / (2 * hbtpParams.MessageRatio)
 
-	fullCoeffs := false
+	fullCoeffs := true
 	fullCoeffs = fullCoeffs && (params.LogN() == params.LogSlots()+1)
 	if fullCoeffs {
 		params.SetLogFVSlots(params.LogN())
@@ -108,7 +107,6 @@ func RtF() {
 	fmt.Println("Done")
 
 	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
-	ckksEvaluator = ckks_fv.NewCKKSEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys})
 
 	// Encode float data added by keystream to plaintext coefficients
 	fmt.Println()
@@ -254,7 +252,7 @@ func RtF() {
 
 	if fullCoeffs {
 		for s := 0; s < 16; s++ {
-			ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertexts[s])
+			ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertexts[s], false)
 			fmt.Println("Done")
 
 			valuesWant0 := make([]complex128, params.Slots())
@@ -271,16 +269,13 @@ func RtF() {
 		}
 	} else {
 		for s := 0; s < 16; s++ {
-			ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertexts[s])
+			ctBoot, _ := hbtp.HalfBoot(ciphertexts[s], true)
 			fmt.Println("Done")
 
 			valuesWant := make([]complex128, params.Slots())
 			for i := 0; i < params.Slots(); i++ {
 				valuesWant[i] = complex(data[s][i], 0)
 			}
-
-			ctBoot := ckksEvaluator.RotateNew(ctBoot1, params.Slots()/2)
-			ckksEvaluator.Add(ctBoot, ctBoot0, ctBoot)
 
 			fmt.Println()
 			fmt.Println("Precision of ciphertext vs. HalfBoot(ciphertext)")

@@ -10,7 +10,7 @@ import (
 // If the input ciphertext level is zero, the input scale must be an exact power of two smaller or equal to round(Q0/2^{10}).
 // If the input ciphertext is at level one or more, the input scale does not need to be an exact power of two as one level
 // can be used to do a scale matching.
-func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext) (ct0, ct1 *Ciphertext) {
+func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext, repack bool) (ct0, ct1 *Ciphertext) {
 
 	//var t time.Time
 	// var ct0, ct1 *Ciphertext
@@ -67,7 +67,14 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext) (ct0, ct1 *Ciphertext) {
 
 	// Part 2 : SineEval
 	//t = time.Now()
-	ct0, ct1 = hbtp.evaluateSine(ct0, ct1)
+	if repack {
+		hbtp.ckksEvaluator.Rotate(ct1, hbtp.params.Slots()/2, ct1)
+		hbtp.ckksEvaluator.Add(ct0, ct1, ct0)
+		ct0, _ = hbtp.evaluateSine(ct0, nil)
+		ct1 = nil
+	} else {
+		ct0, ct1 = hbtp.evaluateSine(ct0, ct1)
+	}
 	//log.Println("After Sine   :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 
 	// Part 3 : Fix scale using diffScaleAfterEvalSine
@@ -75,15 +82,17 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext) (ct0, ct1 *Ciphertext) {
 	if err := hbtp.ckksEvaluator.RescaleMany(ct0, 1, ct0); err != nil {
 		panic(err)
 	}
-
-	hbtp.ckksEvaluator.MultByConst(ct1, hbtp.diffScaleAfterSineEval, ct1)
-	if err := hbtp.ckksEvaluator.RescaleMany(ct1, 1, ct1); err != nil {
-		panic(err)
-	}
-
 	// Rounds to the nearest power of two
 	ct0.SetScale(math.Exp2(math.Round(math.Log2(ct0.Scale()))))
-	ct1.SetScale(math.Exp2(math.Round(math.Log2(ct1.Scale()))))
+
+	if ct1 != nil {
+		hbtp.ckksEvaluator.MultByConst(ct1, hbtp.diffScaleAfterSineEval, ct1)
+		if err := hbtp.ckksEvaluator.RescaleMany(ct1, 1, ct1); err != nil {
+			panic(err)
+		}
+		// Rounds to the nearest power of two
+		ct1.SetScale(math.Exp2(math.Round(math.Log2(ct1.Scale()))))
+	}
 
 	return ct0, ct1
 }
