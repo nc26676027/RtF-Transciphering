@@ -63,7 +63,10 @@ func RtF() {
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.RtFParams[0]
+	hbtpParams := ckks_fv.RtFParams[2]
+	numRound := 4
+	heraModDown := ckks_fv.HeraModDownParams80[2]
+	stcModDown := ckks_fv.StcModDownParams80[2]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
@@ -121,7 +124,6 @@ func RtF() {
 		coeffs[s] = make([]float64, params.N())
 	}
 
-	numRound := 4
 	key = make([]uint64, 16)
 	for i := 0; i < 16; i++ {
 		key[i] = uint64(i + 1) // Use (1, ..., 16) for testing
@@ -211,18 +213,16 @@ func RtF() {
 		fvEncoder.FVScaleUp(plainCKKSRingTs[s], plaintexts[s])
 	}
 
-	hera = ckks_fv.NewMFVHera(numRound, params, fvEncoder, fvEncryptor, fvEvaluator, nil)
-	hera.Init(nonces)
+	hera = ckks_fv.NewMFVHera(numRound, params, fvEncoder, fvEncryptor, fvEvaluator, heraModDown[0])
 	kCt := hera.EncKey(key)
-	hera.KeySchedule(kCt)
 	fmt.Println("Done")
 
 	// FV Keystream
 	fmt.Println()
 	fmt.Println("Evaluate FV keystream by Hera")
-	fvKeystreams := hera.Crypt()
+	fvKeystreams := hera.Crypt(nonces, kCt, heraModDown)
 	for i := 0; i < 16; i++ {
-		fvKeystreams[i] = fvEvaluator.SlotsToCoeffs(fvKeystreams[i])
+		fvKeystreams[i] = fvEvaluator.SlotsToCoeffs(fvKeystreams[i], stcModDown)
 		fvEvaluator.ModSwitchMany(fvKeystreams[i], fvKeystreams[i], fvKeystreams[i].Level())
 	}
 	fmt.Println("Done")
@@ -605,7 +605,7 @@ func smallBatchMFV() {
 
 	// Test SlotsToCoeffs
 	fmt.Println("Test SlotsToCoeffs")
-	ciphertext = evaluator.SlotsToCoeffs(ciphertext1)
+	ciphertext = evaluator.SlotsToCoeffsNoModSwitch(ciphertext1)
 	decrypted = decryptor.DecryptNew(ciphertext)
 	encoder.DecodeRingT(decrypted, ptRt)
 	for i := 0; i < params.N(); i++ {
@@ -622,7 +622,7 @@ func main() {
 	var err error
 
 	choice := "Choose one of 0, 1, 2, 3, 4.\n"
-	for true {
+	for {
 		fmt.Println("Choose an example:")
 		fmt.Println("  (1): RtF Framework")
 		fmt.Println("  (2): MFV Noise Estimate")

@@ -1,112 +1,179 @@
 package ckks_fv
 
 import (
-	"golang.org/x/crypto/blake2b"
+	"fmt"
+
+	"github.com/ldsec/lattigo/v2/ring"
+	"golang.org/x/crypto/sha3"
 )
 
 type MFVHera interface {
-	Init(nonces [][]byte)
-	Crypt() []*Ciphertext
-	KeySchedule(kCt []*Ciphertext) (rkCt [][]*Ciphertext)
+	Crypt(nonce [][]byte, kCt []*Ciphertext, heraModDown []int) []*Ciphertext
+	CryptNoModSwitch(nonce [][]byte, kCt []*Ciphertext) []*Ciphertext
+	CryptAutoModSwitch(nonce [][]byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) []*Ciphertext
+	Reset(nbInitModDown int)
 	EncKey(key []uint64) (res []*Ciphertext)
 }
 
 type mfvHera struct {
-	numRound int
-	slots    int
+	numRound      int
+	slots         int
+	nbInitModDown int
 
-	params         *Parameters
-	encoder        MFVEncoder
-	encryptor      MFVEncryptor
-	evaluator      MFVEvaluator
-	noiseEstimator MFVNoiseEstimator
+	params    *Parameters
+	encoder   MFVEncoder
+	encryptor MFVEncryptor
+	evaluator MFVEvaluator
 
 	stCt []*Ciphertext
-	rcPt [][]*PlaintextMul
-	rkCt [][]*Ciphertext
+	mkCt []*Ciphertext
+	rkCt []*Ciphertext   // Buffer for round key
+	rc   [][][]uint64    // RoundConstants[round][state][slot]
+	rcPt []*PlaintextMul // Buffer for round constants
+	xof  []sha3.ShakeHash
 }
 
-func NewMFVHera(numRound int, params *Parameters, encoder MFVEncoder, encryptor MFVEncryptor, evaluator MFVEvaluator, noiseEstimator MFVNoiseEstimator) MFVHera {
+func NewMFVHera(numRound int, params *Parameters, encoder MFVEncoder, encryptor MFVEncryptor, evaluator MFVEvaluator, nbInitModDown int) MFVHera {
 	hera := new(mfvHera)
 
 	hera.numRound = numRound
 	hera.slots = params.FVSlots()
+	hera.nbInitModDown = nbInitModDown
 
 	hera.params = params
 	hera.encoder = encoder
 	hera.encryptor = encryptor
 	hera.evaluator = evaluator
-	hera.noiseEstimator = noiseEstimator
 
 	hera.stCt = make([]*Ciphertext, 16)
-	hera.rcPt = make([][]*PlaintextMul, numRound+1)
+	hera.mkCt = make([]*Ciphertext, 16)
+	hera.rkCt = make([]*Ciphertext, 16)
+	hera.rcPt = make([]*PlaintextMul, 16)
+	hera.xof = make([]sha3.ShakeHash, hera.slots)
 
-	for r := 0; r <= numRound; r++ {
-		hera.rcPt[r] = make([]*PlaintextMul, 16)
+	hera.rc = make([][][]uint64, hera.numRound+1)
+	for r := 0; r <= hera.numRound; r++ {
+		hera.rc[r] = make([][]uint64, 16)
 		for st := 0; st < 16; st++ {
-			hera.rcPt[r][st] = NewPlaintextMul(params)
+			hera.rc[r][st] = make([]uint64, hera.slots)
 		}
-	}
-
-	hera.rkCt = make([][]*Ciphertext, numRound+1)
-	for r := 0; r <= numRound; r++ {
-		hera.rkCt[r] = make([]*Ciphertext, 16)
 	}
 
 	// Precompute Initial States
 	state := make([]uint64, hera.slots)
-	stPT := NewPlaintextFV(params)
 
 	for i := 0; i < 16; i++ {
 		for j := 0; j < hera.slots; j++ {
 			state[j] = uint64(i + 1) // ic = 1, ..., 16
 		}
-		encoder.EncodeUintSmall(state, stPT)
-		hera.stCt[i] = encryptor.EncryptNew(stPT)
+		icPT := NewPlaintextFV(params)
+		encoder.EncodeUintSmall(state, icPT)
+		encryptor.EncryptNew(icPT)
+		hera.stCt[i] = encryptor.EncryptNew(icPT)
+		if nbInitModDown > 0 {
+			evaluator.ModSwitchMany(hera.stCt[i], hera.stCt[i], nbInitModDown)
+		}
 	}
-
 	return hera
 }
 
-// Precompute Round Constants
-func (hera *mfvHera) Init(nonce [][]byte) {
-	var err error
+func (hera *mfvHera) Reset(nbInitModDown int) {
+	// Precompute Initial States
+	state := make([]uint64, hera.slots)
 
-	slots := hera.slots
-	nr := hera.numRound
-	xof := make([]blake2b.XOF, slots)
-
-	for i := 0; i < slots; i++ {
-		if xof[i], err = blake2b.NewXOF(blake2b.OutputLengthUnknown, nonce[i]); err != nil {
-			panic("blake2b error")
+	for i := 0; i < 16; i++ {
+		for j := 0; j < hera.slots; j++ {
+			state[j] = uint64(i + 1) // ic = 1, ..., 16
+		}
+		icPT := NewPlaintextFV(hera.params)
+		hera.encoder.EncodeUintSmall(state, icPT)
+		hera.encryptor.EncryptNew(icPT)
+		hera.stCt[i] = hera.encryptor.EncryptNew(icPT)
+		if nbInitModDown > 0 {
+			hera.evaluator.ModSwitchMany(hera.stCt[i], hera.stCt[i], nbInitModDown)
 		}
 	}
+}
 
-	rc := make([]uint64, slots)
+// Compute Round Constants
+func (hera *mfvHera) init(nonce [][]byte) {
+	slots := hera.slots
+	for i := 0; i < slots; i++ {
+		hera.xof[i] = sha3.NewShake256()
+		hera.xof[i].Write(nonce[i])
+	}
 
-	for r := 0; r <= nr; r++ {
+	for r := 0; r <= hera.numRound; r++ {
 		for st := 0; st < 16; st++ {
 			for slot := 0; slot < slots; slot++ {
-				rc[slot] = SampleZtx(xof[slot], hera.params.T())
+				hera.rc[r][st][slot] = SampleZtx(hera.xof[slot], hera.params.T())
 			}
-			hera.encoder.EncodeUintMulSmall(rc, hera.rcPt[r][st])
+		}
+	}
+
+	for st := 0; st < 16; st++ {
+		nbSwitch := hera.mkCt[st].Level() - hera.stCt[st].Level()
+		if nbSwitch > 0 {
+			hera.evaluator.ModSwitchMany(hera.mkCt[st], hera.mkCt[st], nbSwitch)
 		}
 	}
 }
 
-func (hera *mfvHera) KeySchedule(kCt []*Ciphertext) (rkCt [][]*Ciphertext) {
-	for r := 0; r < hera.numRound+1; r++ {
-		for st := 0; st < 16; st++ {
-			hera.rkCt[r][st] = hera.evaluator.MulNew(kCt[st], hera.rcPt[r][st])
-		}
-	}
-	return hera.rkCt
+func (hera *mfvHera) findBudgetInfo(noiseEstimator MFVNoiseEstimator) (invBudget, errorBits int) {
+	T := ring.NewUint(hera.params.T())
+	invBudget = noiseEstimator.InvariantNoiseBudget(hera.stCt[0])
+	errorBits = hera.params.LogQLvl(hera.stCt[0].Level()) - T.BitLen() - invBudget
+	return
 }
 
-func (hera *mfvHera) Crypt() []*Ciphertext {
-	// hera.keySchedule(kCt)
+func (hera *mfvHera) modSwitchAuto(round int, noiseEstimator MFVNoiseEstimator, heraModDown []int) {
+	lvl := hera.stCt[0].Level()
+
+	QiLvl := hera.params.Qi()[:lvl+1]
+	LogQiLvl := make([]int, lvl+1)
+	for i := 0; i < lvl+1; i++ {
+		tmp := ring.NewUint(QiLvl[i])
+		LogQiLvl[i] = tmp.BitLen()
+	}
+
+	invBudgetOld, errorBitsOld := hera.findBudgetInfo(noiseEstimator)
+	nbModSwitch, targetErrorBits := 0, errorBitsOld
+	for {
+		targetErrorBits -= LogQiLvl[lvl-nbModSwitch]
+		if targetErrorBits > 0 {
+			nbModSwitch++
+		} else {
+			break
+		}
+	}
+	heraModDown[round] = nbModSwitch
+	for i := 0; i < 16; i++ {
+		hera.evaluator.ModSwitchMany(hera.stCt[i], hera.stCt[i], nbModSwitch)
+		hera.evaluator.ModSwitchMany(hera.mkCt[i], hera.mkCt[i], nbModSwitch)
+	}
+
+	invBudgetNew, errorBitsNew := hera.findBudgetInfo(noiseEstimator)
+	fmt.Printf("Hera Round %d [Budget | Error] : [%v | %v] -> [%v | %v]\n", round, invBudgetOld, errorBitsOld, invBudgetNew, errorBitsNew)
+	fmt.Printf("Hera modDown : %v\n\n", heraModDown)
+}
+
+func (hera *mfvHera) modSwitch(nbSwitch int) {
+	if nbSwitch <= 0 {
+		return
+	}
+	for i := 0; i < 16; i++ {
+		hera.evaluator.ModSwitchMany(hera.stCt[i], hera.stCt[i], nbSwitch)
+		hera.evaluator.ModSwitchMany(hera.mkCt[i], hera.mkCt[i], nbSwitch)
+	}
+}
+
+func (hera *mfvHera) CryptNoModSwitch(nonce [][]byte, kCt []*Ciphertext) []*Ciphertext {
+	for st := 0; st < 16; st++ {
+		hera.mkCt[st] = kCt[st].CopyNew().Ciphertext()
+	}
+	hera.init(nonce)
+
 	hera.addRoundKey(0, false)
-
 	for r := 1; r < hera.numRound; r++ {
 		hera.linLayer()
 		hera.cube()
@@ -119,14 +186,72 @@ func (hera *mfvHera) Crypt() []*Ciphertext {
 	return hera.stCt
 }
 
+func (hera *mfvHera) CryptAutoModSwitch(nonce [][]byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) []*Ciphertext {
+	heraModDown := make([]int, hera.numRound+1)
+	heraModDown[0] = hera.nbInitModDown
+	for st := 0; st < 16; st++ {
+		hera.mkCt[st] = kCt[st].CopyNew().Ciphertext()
+	}
+	hera.init(nonce)
+
+	hera.addRoundKey(0, false)
+	for r := 1; r < hera.numRound; r++ {
+		hera.linLayer()
+		hera.cube()
+		hera.modSwitchAuto(r, noiseEstimator, heraModDown)
+		hera.addRoundKey(r, false)
+	}
+	hera.linLayer()
+	hera.cube()
+	hera.modSwitchAuto(hera.numRound, noiseEstimator, heraModDown)
+	hera.linLayer()
+	hera.addRoundKey(hera.numRound, true)
+	return hera.stCt
+}
+
+func (hera *mfvHera) Crypt(nonce [][]byte, kCt []*Ciphertext, heraModDown []int) []*Ciphertext {
+	if heraModDown[0] != hera.nbInitModDown {
+		errorString := fmt.Sprintf("nbInitModDown expected %d but %d given", hera.nbInitModDown, heraModDown[0])
+		panic(errorString)
+	}
+
+	for st := 0; st < 16; st++ {
+		hera.mkCt[st] = kCt[st].CopyNew().Ciphertext()
+	}
+	hera.init(nonce)
+
+	hera.addRoundKey(0, false)
+	for r := 1; r < hera.numRound; r++ {
+		hera.linLayer()
+		hera.cube()
+		hera.modSwitch(heraModDown[r])
+		hera.addRoundKey(r, false)
+	}
+	hera.linLayer()
+	hera.cube()
+	hera.modSwitch(heraModDown[hera.numRound])
+	hera.linLayer()
+	hera.addRoundKey(hera.numRound, true)
+	return hera.stCt
+}
+
 func (hera *mfvHera) addRoundKey(round int, reduce bool) {
 	ev := hera.evaluator
 
 	for st := 0; st < 16; st++ {
+		hera.rcPt[st] = NewPlaintextMulLvl(hera.params, hera.stCt[st].Level())
+		hera.encoder.EncodeUintMulSmall(hera.rc[round][st], hera.rcPt[st])
+	}
+
+	for st := 0; st < 16; st++ {
+		hera.rkCt[st] = hera.evaluator.MulNew(hera.mkCt[st], hera.rcPt[st])
+	}
+
+	for st := 0; st < 16; st++ {
 		if reduce {
-			ev.Add(hera.stCt[st], hera.rkCt[round][st], hera.stCt[st])
+			ev.Add(hera.stCt[st], hera.rkCt[st], hera.stCt[st])
 		} else {
-			ev.AddNoMod(hera.stCt[st], hera.rkCt[round][st], hera.stCt[st])
+			ev.AddNoMod(hera.stCt[st], hera.rkCt[st], hera.stCt[st])
 		}
 	}
 }
@@ -212,6 +337,9 @@ func (hera *mfvHera) EncKey(key []uint64) (res []*Ciphertext) {
 		keyPt := NewPlaintextFV(hera.params)
 		hera.encoder.EncodeUintSmall(dupKey, keyPt)
 		res[i] = hera.encryptor.EncryptNew(keyPt)
+		if hera.nbInitModDown > 0 {
+			hera.evaluator.ModSwitchMany(res[i], res[i], hera.nbInitModDown)
+		}
 	}
 	return
 }

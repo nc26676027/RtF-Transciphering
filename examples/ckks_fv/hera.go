@@ -3,16 +3,29 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
+	"os"
 
 	"github.com/ldsec/lattigo/v2/ckks_fv"
 	"github.com/ldsec/lattigo/v2/utils"
-	"golang.org/x/crypto/blake2b"
+	"golang.org/x/crypto/sha3"
 )
 
 func testHera() {
-	params := ckks_fv.DefaultFVParams[8]
-	slots := params.FVSlots()
+	params, _ := ckks_fv.RtFParams[2].Params()
+	numRound := 5
+	heraModDown := ckks_fv.HeraModDownParams80[2]
+	stcModDown := ckks_fv.StcModDownParams80[2]
+	_, _ = heraModDown, stcModDown
 
+	fullCoeffs := true
+	fullCoeffs = fullCoeffs && (params.LogN() == params.LogSlots()+1)
+	if fullCoeffs {
+		params.SetLogFVSlots(params.LogN())
+	} else {
+		params.SetLogFVSlots(params.LogSlots())
+	}
+
+	slots := params.FVSlots()
 	nonces := make([][]byte, slots)
 	for i := 0; i < slots; i++ {
 		nonces[i] = make([]byte, 64)
@@ -26,7 +39,7 @@ func testHera() {
 
 	keystreams := make([][]uint64, slots)
 	for i := 0; i < slots; i++ {
-		keystreams[i] = plainHera(4, nonces[i], key, params.T())
+		keystreams[i] = plainHera(numRound, nonces[i], key, params.T())
 	}
 
 	kgen := ckks_fv.NewKeyGenerator(params)
@@ -45,34 +58,48 @@ func testHera() {
 	fvEvaluator := ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
 	fvNoiseEstimator := ckks_fv.NewMFVNoiseEstimator(params, sk)
 
-	hera := ckks_fv.NewMFVHera(4, params, fvEncoder, fvEncryptor, fvEvaluator, fvNoiseEstimator)
-	hera.Init(nonces)
-
+	hera := ckks_fv.NewMFVHera(numRound, params, fvEncoder, fvEncryptor, fvEvaluator, 4)
 	heKey := hera.EncKey(key)
-	hera.KeySchedule(heKey)
-	stCt := hera.Crypt()
-
+	fmt.Printf("===== Encrypt Start with %d Slots =====\n", slots)
+	stCt := hera.CryptAutoModSwitch(nonces, heKey, fvNoiseEstimator)
+	// stCt := hera.CryptNoModSwitch(nonces, heKey)
+	// _ = fvNoiseEstimator
 	for i := 0; i < 16; i++ {
-		ksSlot := fvEvaluator.SlotsToCoeffs(stCt[i])
+		// ksSlot := fvEvaluator.SlotsToCoeffs(stCt[i], stcModDown)
+		ksSlot := fvEvaluator.SlotsToCoeffsAutoModSwitch(stCt[i], fvNoiseEstimator)
+		// ksSlot := fvEvaluator.SlotsToCoeffsNoModSwitch(stCt[i])
+		fmt.Printf("Budget Remain : %d\n", fvNoiseEstimator.InvariantNoiseBudget(ksSlot))
+		fvEvaluator.ModSwitchMany(ksSlot, ksSlot, ksSlot.Level())
+		fmt.Printf("Budget Final : %d\n", fvNoiseEstimator.InvariantNoiseBudget(ksSlot))
+
 		ksCt := fvDecryptor.DecryptNew(ksSlot)
 		ksCoef := ckks_fv.NewPlaintextRingT(params)
 		fvEncoder.DecodeRingT(ksCt, ksCoef)
 
 		for j := 0; j < slots; j++ {
 			br_j := utils.BitReverse64(uint64(j), uint64(params.LogN()))
-			fmt.Printf("%5v ", ksCoef.Element.Value()[0].Coeffs[0][br_j])
+			// fmt.Printf("%5v ", ksCoef.Element.Value()[0].Coeffs[0][br_j])
+
+			if ksCoef.Element.Value()[0].Coeffs[0][br_j] != keystreams[j][i] {
+				fmt.Printf("[-] Validity failed")
+				os.Exit(0)
+			}
 		}
-		fmt.Println("==")
-		for j := 0; j < slots; j++ {
-			fmt.Printf("%5v ", keystreams[j][i])
-		}
-		fmt.Print("\n\n")
+		/*
+			fmt.Println("==")
+			for j := 0; j < slots; j++ {
+				fmt.Printf("%5v ", keystreams[j][i])
+			}
+			fmt.Print("\n\n\n")
+		*/
 	}
+	fmt.Print("[+] Validity Ok\n\n")
 }
 
 func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint64) {
 	nr := roundNum
-	xof, _ := blake2b.NewXOF(blake2b.OutputLengthUnknown, nonce)
+	xof := sha3.NewShake256()
+	xof.Write(nonce)
 	state = make([]uint64, 16)
 
 	rks := make([][]uint64, nr+1)
