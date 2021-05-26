@@ -40,11 +40,16 @@ func BenchmarkRtF(b *testing.B) {
 	// smaller or equal to logSlots.
 
 	numRound := 5
-	hbtpParams := RtFParams[2]
-	heraModDown := HeraModDownParams80[2]
-	stcModDown := StcModDownParams80[2]
-	heraModDown = []int{4, 2, 2, 2, 2, 2}
-	stcModDown = []int{0, 1, 1, 1, 1, 1, 0, 1}
+	paramIndex := 1
+	hbtpParams := RtFParams[paramIndex]
+	var heraModDown, stcModDown []int
+	if numRound == 4 {
+		heraModDown = HeraModDownParams80[paramIndex]
+		stcModDown = StcModDownParams80[paramIndex]
+	} else {
+		heraModDown = HeraModDownParams128[paramIndex]
+		stcModDown = StcModDownParams128[paramIndex]
+	}
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
@@ -73,6 +78,9 @@ func BenchmarkRtF(b *testing.B) {
 	pDcds := fvEncoder.GenSlotToCoeffMatFV()
 	rotationsStC := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
 	rotations := append(rotationsHalfBoot, rotationsStC...)
+	if !fullCoeffs {
+		rotations = append(rotations, params.Slots()/2)
+	}
 	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
 	rlk := kgen.GenRelinearizationKey(sk)
 	hbtpKey := BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
