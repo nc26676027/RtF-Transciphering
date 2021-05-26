@@ -59,15 +59,18 @@ type MFVEncryptor interface {
 type encryptor struct {
 	params   *Parameters
 	ringQ    *ring.Ring
-	ringQP   *ring.Ring
+	ringP    *ring.Ring
+	ringQPs  []*ring.Ring
 	polypool [3]*ring.Poly
+	poolQ    [3]*ring.Poly
+	poolP    [3]*ring.Poly
 
-	baseconverter              *ring.FastBasisExtender
-	gaussianSamplerQ           *ring.GaussianSampler
-	uniformSamplerQ            *ring.UniformSampler
+	baseconverter   *ring.FastBasisExtender
+	gaussianSampler *ring.GaussianSampler
+	uniformSamplerQ *ring.UniformSampler
+	// uniformSamplerQPs           []*ring.UniformSampler
+	ternarySamplerQ            *ring.TernarySampler
 	ternarySamplerMontgomeryQ  *ring.TernarySampler
-	gaussianSamplerQP          *ring.GaussianSampler
-	uniformSamplerQP           *ring.UniformSampler
 	ternarySamplerMontgomeryQP *ring.TernarySampler
 }
 
@@ -95,24 +98,12 @@ func NewMFVEncryptorFromSk(params *Parameters, sk *SecretKey) MFVEncryptor {
 
 func newMFVEncryptor(params *Parameters) encryptor {
 
-	var ringQ, ringQP *ring.Ring
+	var ringQ, ringP *ring.Ring
+	var ringQPs []*ring.Ring
 	var err error
 
 	if ringQ, err = ring.NewRing(params.N(), params.qi); err != nil {
 		panic(err)
-	}
-
-	if ringQP, err = ring.NewRing(params.N(), append(params.qi, params.pi...)); err != nil {
-		panic(err)
-	}
-
-	var baseconverter *ring.FastBasisExtender
-	if len(params.pi) != 0 {
-		var ringP *ring.Ring
-		if ringP, err = ring.NewRing(params.N(), params.pi); err != nil {
-			panic(err)
-		}
-		baseconverter = ring.NewFastBasisExtender(ringQ, ringP)
 	}
 
 	prng, err := utils.NewPRNG()
@@ -120,23 +111,59 @@ func newMFVEncryptor(params *Parameters) encryptor {
 		panic(err)
 	}
 
+	var baseconverter *ring.FastBasisExtender
+	var polypool, poolQ, poolP [3]*ring.Poly
+	// var uniformSamplerQPs []*ring.UniformSampler
+	var ternarySamplerMontgomeryQP *ring.TernarySampler
+
+	if len(params.pi) != 0 {
+		if ringP, err = ring.NewRing(params.N(), params.pi); err != nil {
+			panic(err)
+		}
+		baseconverter = ring.NewFastBasisExtender(ringQ, ringP)
+
+		modCount := len(params.qi)
+		ringQPs = make([]*ring.Ring, modCount)
+		// uniformSamplerQPs = make([]*ring.UniformSampler, modCount)
+
+		for i := 0; i < modCount; i++ {
+			moduli := make([]uint64, i+1)
+			copy(moduli, params.qi[:i+1])
+			if ringQPs[i], err = ring.NewRing(params.N(), append(moduli, params.pi...)); err != nil {
+				panic(err)
+			}
+			// uniformSamplerQPs[i] = ring.NewUniformSampler(prng, ringQPs[i])
+		}
+
+		ringQPmax := ringQPs[modCount-1]
+		ternarySamplerMontgomeryQP = ring.NewTernarySampler(prng, ringQPmax, 0.5, true)
+		polypool = [3]*ring.Poly{ringQPmax.NewPoly(), ringQPmax.NewPoly(), ringQPmax.NewPoly()}
+		poolQ = [3]*ring.Poly{ringQ.NewPoly(), ringQ.NewPoly(), ringQ.NewPoly()}
+		poolP = [3]*ring.Poly{ringP.NewPoly(), ringP.NewPoly(), ringP.NewPoly()}
+	} else {
+		polypool = [3]*ring.Poly{ringQ.NewPoly(), ringQ.NewPoly(), ringQ.NewPoly()}
+	}
+
 	return encryptor{
-		params:                     params.Copy(),
-		ringQ:                      ringQ,
-		ringQP:                     ringQP,
-		polypool:                   [3]*ring.Poly{ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly()},
-		baseconverter:              baseconverter,
-		gaussianSamplerQ:           ring.NewGaussianSampler(prng),
-		uniformSamplerQ:            ring.NewUniformSampler(prng, ringQ),
+		params:          params.Copy(),
+		ringQ:           ringQ,
+		ringP:           ringP,
+		ringQPs:         ringQPs,
+		polypool:        polypool,
+		poolQ:           poolQ,
+		poolP:           poolP,
+		baseconverter:   baseconverter,
+		gaussianSampler: ring.NewGaussianSampler(prng),
+		uniformSamplerQ: ring.NewUniformSampler(prng, ringQ),
+		// uniformSamplerQPs:           uniformSamplerQPs,
+		ternarySamplerQ:            ring.NewTernarySampler(prng, ringQ, 0.5, false),
 		ternarySamplerMontgomeryQ:  ring.NewTernarySampler(prng, ringQ, 0.5, true),
-		gaussianSamplerQP:          ring.NewGaussianSampler(prng),
-		uniformSamplerQP:           ring.NewUniformSampler(prng, ringQP),
-		ternarySamplerMontgomeryQP: ring.NewTernarySampler(prng, ringQP, 0.5, true),
+		ternarySamplerMontgomeryQP: ternarySamplerMontgomeryQP,
 	}
 }
 
 func (encryptor *pkEncryptor) EncryptNew(plaintext *Plaintext) *Ciphertext {
-	ciphertext := NewCiphertextFV(encryptor.params, 1)
+	ciphertext := NewCiphertextFVLvl(encryptor.params, 1, plaintext.Level())
 	encryptor.encrypt(plaintext, ciphertext, false)
 	return ciphertext
 }
@@ -151,7 +178,7 @@ func (encryptor *pkEncryptor) Encrypt(plaintext *Plaintext, ciphertext *Cipherte
 }
 
 func (encryptor *pkEncryptor) EncryptFastNew(plaintext *Plaintext) *Ciphertext {
-	ciphertext := NewCiphertextFV(encryptor.params, 1)
+	ciphertext := NewCiphertextFVLvl(encryptor.params, 1, plaintext.Level())
 	encryptor.encrypt(plaintext, ciphertext, true)
 
 	return ciphertext
@@ -179,63 +206,141 @@ func (encryptor *pkEncryptor) EncryptFromCRPFastNew(plaintext *Plaintext, crp *r
 
 func (encryptor *pkEncryptor) encrypt(p *Plaintext, ciphertext *Ciphertext, fast bool) {
 
+	if p.Level() != ciphertext.Level() {
+		panic("cannot encrypt: input and output should have the same level")
+	}
+	levelQ := p.Level()
 	ringQ := encryptor.ringQ
 
 	if fast {
 
-		encryptor.ternarySamplerMontgomeryQ.Read(encryptor.polypool[2])
-		ringQ.NTTLazy(encryptor.polypool[2], encryptor.polypool[2])
+		encryptor.ternarySamplerMontgomeryQ.ReadLvl(levelQ, encryptor.polypool[2])
+		ringQ.NTTLazyLvl(levelQ, encryptor.polypool[2], encryptor.polypool[2])
 
-		ringQ.MulCoeffsMontgomery(encryptor.polypool[2], encryptor.pk.Value[0], encryptor.polypool[0])
-		ringQ.MulCoeffsMontgomery(encryptor.polypool[2], encryptor.pk.Value[1], encryptor.polypool[1])
+		ringQ.MulCoeffsMontgomeryLvl(levelQ, encryptor.polypool[2], encryptor.pk.Value[0], encryptor.polypool[0])
+		ringQ.MulCoeffsMontgomeryLvl(levelQ, encryptor.polypool[2], encryptor.pk.Value[1], encryptor.polypool[1])
 
-		ringQ.InvNTT(encryptor.polypool[0], ciphertext.value[0])
-		ringQ.InvNTT(encryptor.polypool[1], ciphertext.value[1])
+		ringQ.InvNTTLvl(levelQ, encryptor.polypool[0], ciphertext.value[0])
+		ringQ.InvNTTLvl(levelQ, encryptor.polypool[1], ciphertext.value[1])
 
 		// ct[0] = pk[0]*u + e0
-		encryptor.gaussianSamplerQ.ReadAndAdd(ciphertext.value[0], ringQ, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
+		encryptor.gaussianSampler.ReadAndAddLvl(levelQ, ciphertext.value[0], ringQ, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
 
 		// ct[1] = pk[1]*u + e1
-		encryptor.gaussianSamplerQ.ReadAndAdd(ciphertext.value[1], ringQ, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
+		encryptor.gaussianSampler.ReadAndAddLvl(levelQ, ciphertext.value[1], ringQ, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
 
 	} else {
 
-		ringQP := encryptor.ringQP
+		ringQP := encryptor.ringQPs[levelQ]
 
-		// u
-		encryptor.ternarySamplerMontgomeryQP.Read(encryptor.polypool[2])
-		ringQP.NTTLazy(encryptor.polypool[2], encryptor.polypool[2])
+		polypool := [3]*ring.Poly{ringQP.NewPoly(), ringQP.NewPoly(), ringQP.NewPoly()}
+		if levelQ == len(encryptor.params.qi)-1 {
+			polypool[0] = encryptor.polypool[0]
+			polypool[1] = encryptor.polypool[1]
+			polypool[2] = encryptor.polypool[2]
+		} else {
+			levelQP := levelQ + len(encryptor.params.pi)
+			polypool[0].Coeffs = polypool[0].Coeffs[:levelQP+1]
+			polypool[1].Coeffs = polypool[1].Coeffs[:levelQP+1]
+			polypool[2].Coeffs = polypool[2].Coeffs[:levelQP+1]
+		}
 
-		// ct[0] = pk[0]*u
-		// ct[1] = pk[1]*u
-		ringQP.MulCoeffsMontgomery(encryptor.polypool[2], encryptor.pk.Value[0], encryptor.polypool[0])
-		ringQP.MulCoeffsMontgomery(encryptor.polypool[2], encryptor.pk.Value[1], encryptor.polypool[1])
+		if levelQ == len(encryptor.params.qi)-1 {
+			// u
+			encryptor.ternarySamplerMontgomeryQP.Read(polypool[2])
+			ringQP.NTTLazy(polypool[2], polypool[2])
 
-		ringQP.InvNTTLazy(encryptor.polypool[0], encryptor.polypool[0])
-		ringQP.InvNTTLazy(encryptor.polypool[1], encryptor.polypool[1])
+			// ct[0] = pk[0]*u
+			// ct[1] = pk[1]*u
+			ringQP.MulCoeffsMontgomery(polypool[2], encryptor.pk.Value[0], polypool[0])
+			ringQP.MulCoeffsMontgomery(polypool[2], encryptor.pk.Value[1], polypool[1])
 
-		// ct[0] = pk[0]*u + e0
-		encryptor.gaussianSamplerQP.ReadAndAdd(encryptor.polypool[0], ringQP, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
+			ringQP.InvNTTLazy(polypool[0], polypool[0])
+			ringQP.InvNTTLazy(polypool[1], polypool[1])
 
-		// ct[1] = pk[1]*u + e1
-		encryptor.gaussianSamplerQP.ReadAndAdd(encryptor.polypool[1], ringQP, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
+			// ct[0] = pk[0]*u + e0
+			encryptor.gaussianSampler.ReadAndAdd(polypool[0], ringQP, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
 
-		// We rescale the encryption of zero by the special prime, dividing the error by this prime
-		encryptor.baseconverter.ModDownPQ(len(ringQ.Modulus)-1, encryptor.polypool[0], ciphertext.value[0])
-		encryptor.baseconverter.ModDownPQ(len(ringQ.Modulus)-1, encryptor.polypool[1], ciphertext.value[1])
+			// ct[1] = pk[1]*u + e1
+			encryptor.gaussianSampler.ReadAndAdd(polypool[1], ringQP, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
+
+			// We rescale the encryption of zero by the special prime, dividing the error by this prime
+			encryptor.baseconverter.ModDownPQ(levelQ, polypool[0], ciphertext.value[0])
+			encryptor.baseconverter.ModDownPQ(levelQ, polypool[1], ciphertext.value[1])
+
+			// ct[0] = pk[0]*u + e0 + m
+			// ct[1] = pk[1]*u + e1
+			ringQ.AddLvl(levelQ, ciphertext.value[0], p.value, ciphertext.value[0])
+		} else {
+			ringP := encryptor.ringP
+
+			poolQ0 := encryptor.poolQ[0]
+			poolQ1 := encryptor.poolQ[1]
+			poolQ2 := encryptor.poolQ[2]
+			poolP0 := encryptor.poolP[0]
+			poolP1 := encryptor.poolP[1]
+			poolP2 := encryptor.poolP[2]
+
+			encryptor.ternarySamplerQ.ReadLvl(levelQ, poolQ2)
+			extendBasisSmallNormAndCenter(ringQ, ringP, poolQ2, poolP2)
+
+			// (#Q + #P) NTT
+			ringQ.NTTLvl(levelQ, poolQ2, poolQ2)
+			ringP.NTT(poolP2, poolP2)
+
+			ringQ.MFormLvl(levelQ, poolQ2, poolQ2)
+			ringP.MForm(poolP2, poolP2)
+
+			pk0P := new(ring.Poly)
+			pk1P := new(ring.Poly)
+			pk0P.Coeffs = encryptor.pk.Value[0].Coeffs[len(ringQ.Modulus):]
+			pk1P.Coeffs = encryptor.pk.Value[1].Coeffs[len(ringQ.Modulus):]
+
+			// ct0 = u*pk0
+			// ct1 = u*pk1
+			ringQ.MulCoeffsMontgomeryLvl(levelQ, poolQ2, encryptor.pk.Value[0], poolQ0)
+			ringQ.MulCoeffsMontgomeryLvl(levelQ, poolQ2, encryptor.pk.Value[1], poolQ1)
+			ringP.MulCoeffsMontgomery(poolP2, pk0P, poolP0)
+			ringP.MulCoeffsMontgomery(poolP2, pk1P, poolP1)
+
+			// 2*(#Q + #P) NTT
+			ringQ.InvNTTLvl(levelQ, poolQ0, poolQ0)
+			ringQ.InvNTTLvl(levelQ, poolQ1, poolQ1)
+			ringP.InvNTT(poolP0, poolP0)
+			ringP.InvNTT(poolP1, poolP1)
+
+			// ct0 = u*pk0 + e0
+			encryptor.gaussianSampler.ReadLvl(levelQ, poolQ2, ringQ, encryptor.params.sigma, int(6*encryptor.params.sigma))
+			extendBasisSmallNormAndCenter(ringQ, ringP, poolQ2, poolP2)
+			ringQ.AddLvl(levelQ, poolQ0, poolQ2, poolQ0)
+			ringP.Add(poolP0, poolP2, poolP0)
+
+			// ct1 = u*pk1 + e1
+			encryptor.gaussianSampler.ReadLvl(levelQ, poolQ2, ringQ, encryptor.params.sigma, int(6*encryptor.params.sigma))
+			extendBasisSmallNormAndCenter(ringQ, ringP, poolQ2, poolP2)
+			ringQ.AddLvl(levelQ, poolQ1, poolQ2, poolQ1)
+			ringP.Add(poolP1, poolP2, poolP1)
+
+			// ct0 = (u*pk0 + e0)/P + m
+			encryptor.baseconverter.ModDownSplitPQ(levelQ, poolQ0, poolP0, ciphertext.value[0])
+			ringQ.AddLvl(levelQ, ciphertext.value[0], p.value, ciphertext.value[0])
+
+			// ct1 = (u*pk0 + e1)/P
+			encryptor.baseconverter.ModDownSplitPQ(levelQ, poolQ1, poolP1, ciphertext.value[1])
+		}
 	}
-	// ct[0] = pk[0]*u + e0 + m
-	// ct[1] = pk[1]*u + e1
-	encryptor.ringQ.Add(ciphertext.value[0], p.value, ciphertext.value[0])
 }
 
 func (encryptor *skEncryptor) EncryptNew(plaintext *Plaintext) *Ciphertext {
-	ciphertext := NewCiphertextFV(encryptor.params, 1)
+	ciphertext := NewCiphertextFVLvl(encryptor.params, 1, plaintext.Level())
 	encryptor.Encrypt(plaintext, ciphertext)
 	return ciphertext
 }
 
 func (encryptor *skEncryptor) Encrypt(plaintext *Plaintext, ciphertext *Ciphertext) {
+	if plaintext.Level() != ciphertext.Level() {
+		panic("cannot Encrypt: input and output should have the same level")
+	}
 	encryptor.encryptSample(plaintext, ciphertext)
 }
 
@@ -277,16 +382,21 @@ func (encryptor *skEncryptor) encryptFromCRP(plaintext *Plaintext, ciphertext *C
 
 func (encryptor *skEncryptor) encrypt(p *Plaintext, ciphertext *Ciphertext, crp *ring.Poly) {
 
+	if p.Level() != ciphertext.Level() {
+		panic("cannot encrypt: input and output should have the same level")
+	}
+	level := p.Level()
+
 	ringQ := encryptor.ringQ
 
-	ringQ.MulCoeffsMontgomery(crp, encryptor.sk.Value, ciphertext.value[0])
-	ringQ.Neg(ciphertext.value[0], ciphertext.value[0])
+	ringQ.MulCoeffsMontgomeryLvl(level, crp, encryptor.sk.Value, ciphertext.value[0])
+	ringQ.NegLvl(level, ciphertext.value[0], ciphertext.value[0])
 
-	ringQ.InvNTT(ciphertext.value[0], ciphertext.value[0])
-	ringQ.InvNTT(crp, ciphertext.value[1])
+	ringQ.InvNTTLvl(level, ciphertext.value[0], ciphertext.value[0])
+	ringQ.InvNTTLvl(level, crp, ciphertext.value[1])
 
-	encryptor.gaussianSamplerQ.ReadAndAdd(ciphertext.value[0], ringQ, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
+	encryptor.gaussianSampler.ReadAndAddLvl(level, ciphertext.value[0], ringQ, encryptor.params.Sigma(), int(6*encryptor.params.Sigma()))
 
 	// ct = [-a*s + m + e , a]
-	encryptor.ringQ.Add(ciphertext.value[0], p.value, ciphertext.value[0])
+	encryptor.ringQ.AddLvl(level, ciphertext.value[0], p.value, ciphertext.value[0])
 }
