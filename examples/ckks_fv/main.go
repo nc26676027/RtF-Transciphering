@@ -63,10 +63,11 @@ func RtF() {
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.RtFParams[2]
-	numRound := 4
-	heraModDown := ckks_fv.HeraModDownParams80[2]
-	stcModDown := ckks_fv.StcModDownParams80[2]
+	paramIndex := 0
+	hbtpParams := ckks_fv.RtFParams[paramIndex]
+	numRound := 5
+	heraModDown := ckks_fv.HeraModDownParams128[paramIndex]
+	stcModDown := ckks_fv.StcModDownParams128[paramIndex]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
@@ -100,6 +101,9 @@ func RtF() {
 	pDcds := fvEncoder.GenSlotToCoeffMatFV()
 	rotationsStC := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
 	rotations := append(rotationsHalfBoot, rotationsStC...)
+	if !fullCoeffs {
+		rotations = append(rotations, params.Slots()/2)
+	}
 	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
 	rlk := kgen.GenRelinearizationKey(sk)
 	hbtpKey := ckks_fv.BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
@@ -467,33 +471,31 @@ func smallBatchMFV() {
 	}
 	fmt.Println()
 
-	_, _, _, _ = tmp1, tmp2, rot1, rot2
 	// Test RotateColumns
-	/*
-		fmt.Println("Test RotateColumns")
-		rot1 = 6
-		rot2 = 1
-		tmp1 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext1.Level())
-		tmp2 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext2.Level())
-		evaluator.RotateColumns(ciphertext1, rot1, tmp1)
-		evaluator.RotateColumns(ciphertext2, rot2, tmp2)
-		ciphertext = evaluator.AddNew(tmp1, tmp2)
+	fmt.Println("Test RotateColumns")
+	rot1 = 6
+	rot2 = 1
+	tmp1 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext1.Level())
+	tmp2 = ckks_fv.NewCiphertextFVLvl(params, 1, ciphertext2.Level())
+	evaluator.RotateColumns(ciphertext1, rot1, tmp1)
+	evaluator.RotateColumns(ciphertext2, rot2, tmp2)
+	ciphertext = evaluator.AddNew(tmp1, tmp2)
 
-		decrypted = decryptor.DecryptNew(ciphertext)
-		encoder.DecodeUintSmall(decrypted, decoded)
+	decrypted = decryptor.DecryptNew(ciphertext)
+	encoder.DecodeUintSmall(decrypted, decoded)
 
-		for i := 0; i < FVSlots/2; i++ {
-			sol := data1[(i+rot1)%(FVSlots/2)] + data2[(i+rot2)%(FVSlots/2)]
-			fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
-		}
-		fmt.Println()
+	for i := 0; i < FVSlots/2; i++ {
+		sol := data1[(i+rot1)%(FVSlots/2)] + data2[(i+rot2)%(FVSlots/2)]
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
 
-		for i := FVSlots / 2; i < FVSlots; i++ {
-			sol := data1[FVSlots/2+(i+rot1)%(FVSlots/2)] + data2[FVSlots/2+(i+rot2)%(FVSlots/2)]
-			fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
-		}
-		fmt.Println()
-	*/
+	for i := FVSlots / 2; i < FVSlots; i++ {
+		sol := data1[FVSlots/2+(i+rot1)%(FVSlots/2)] + data2[FVSlots/2+(i+rot2)%(FVSlots/2)]
+		fmt.Printf("decoded[%d]: %d (== %d)\n", i, decoded[i], sol)
+	}
+	fmt.Println()
+
 	// Test RotateRows
 	fmt.Println("Test RotateRows")
 	evaluator.RotateRows(ciphertext1, ciphertext)
