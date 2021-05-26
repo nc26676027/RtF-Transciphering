@@ -3,25 +3,69 @@ package ckks_fv
 import (
 	"crypto/rand"
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/ldsec/lattigo/v2/utils"
 	"golang.org/x/crypto/sha3"
 )
 
-func BenchmarkRtF(b *testing.B) {
+func BenchmarkRtF80f(b *testing.B) {
+	benchmarkRtF(b, "80f", 4, 0, 2, true)
+}
+
+func BenchmarkRtF80s(b *testing.B) {
+	benchmarkRtF(b, "80s", 4, 1, 0, false)
+}
+
+func BenchmarkRtF80af(b *testing.B) {
+	benchmarkRtF(b, "80af", 4, 2, 2, true)
+}
+
+func BenchmarkRtF80as(b *testing.B) {
+	benchmarkRtF(b, "80as", 4, 3, 0, false)
+}
+
+func BenchmarkRtF80h(b *testing.B) {
+	benchmarkRtF(b, "80h", 4, 4, 2, false)
+}
+
+func BenchmarkRtF128f(b *testing.B) {
+	benchmarkRtF(b, "128f", 5, 0, 2, true)
+}
+
+func BenchmarkRtF128s(b *testing.B) {
+	benchmarkRtF(b, "128s", 5, 1, 0, false)
+}
+
+func BenchmarkRtF128af(b *testing.B) {
+	benchmarkRtF(b, "128af", 5, 2, 2, true)
+}
+
+func BenchmarkRtF128as(b *testing.B) {
+	benchmarkRtF(b, "128as", 5, 3, 2, false)
+}
+
+func BenchmarkRtF128h(b *testing.B) {
+	benchmarkRtF(b, "128f", 5, 4, 2, false)
+}
+
+func BenchmarkRtF128_9(b *testing.B) {
+	benchmarkRtF(b, "128-9", 5, 5, 2, false)
+}
+
+func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	var err error
 
 	var hbtp *HalfBootstrapper
 	var kgen KeyGenerator
 	var fvEncoder MFVEncoder
 	var ckksEncoder CKKSEncoder
+	var ckksDecryptor CKKSDecryptor
 	var sk *SecretKey
 	var pk *PublicKey
 	var fvEncryptor MFVEncryptor
 	var fvEvaluator MFVEvaluator
-	var ckksEvaluator CKKSEvaluator
-	// var fvNoiseEstimator MFVNoiseEstimator
 	var plainCKKSRingTs []*PlaintextRingT
 	var plaintexts []*Plaintext
 	var hera MFVHera
@@ -33,15 +77,20 @@ func BenchmarkRtF(b *testing.B) {
 	var fvKeystreams []*Ciphertext
 
 	// Half-Bootstrapping parameters
-	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
-	// are available in github.com/ldsec/lattigo/v2/ckks/halfboot_params
-	// LogSlots is hardcoded to 15 in the parameters, but can be changed from 1 to 15.
+	// Six sets of parameters (index 0 to 5) ensuring 128 bit of security
+	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
+	// LogSlots is hardcoded in the parameters, but can be changed from 4 to 15.
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	numRound := 5
-	paramIndex := 1
 	hbtpParams := RtFParams[paramIndex]
+	params, err := hbtpParams.Params()
+	if err != nil {
+		panic(err)
+	}
+	messageScaling := float64(params.T()) / (2 * hbtpParams.MessageRatio)
+
+	// HERA parameters in RtF
 	var heraModDown, stcModDown []int
 	if numRound == 4 {
 		heraModDown = HeraModDownParams80[paramIndex]
@@ -50,14 +99,8 @@ func BenchmarkRtF(b *testing.B) {
 		heraModDown = HeraModDownParams128[paramIndex]
 		stcModDown = StcModDownParams128[paramIndex]
 	}
-	params, err := hbtpParams.Params()
-	if err != nil {
-		panic(err)
-	}
-	messageScaling := float64(params.T()) / (2 * hbtpParams.MessageRatio)
 
-	fullCoeffs := true
-	fullCoeffs = fullCoeffs && (params.LogN() == params.LogSlots()+1)
+	// fullCoeffs denotes whether full coefficients are used for data encoding
 	if fullCoeffs {
 		params.SetLogFVSlots(params.LogN())
 	} else {
@@ -72,10 +115,11 @@ func BenchmarkRtF(b *testing.B) {
 	fvEncoder = NewMFVEncoder(params)
 	ckksEncoder = NewCKKSEncoder(params)
 	fvEncryptor = NewMFVEncryptorFromPk(params, pk)
+	ckksDecryptor = NewCKKSDecryptor(params, sk)
 
 	// Generating half-bootstrapping keys
 	rotationsHalfBoot := kgen.GenRotationIndexesForHalfBoot(params.LogSlots(), hbtpParams)
-	pDcds := fvEncoder.GenSlotToCoeffMatFV()
+	pDcds := fvEncoder.GenSlotToCoeffMatFV(radix)
 	rotationsStC := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
 	rotations := append(rotationsHalfBoot, rotationsStC...)
 	if !fullCoeffs {
@@ -89,11 +133,8 @@ func BenchmarkRtF(b *testing.B) {
 		panic(err)
 	}
 
-	fvEvaluator = NewMFVEvaluator(params, EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
-	// fvNoiseEstimator = NewMFVNoiseEstimator(params, sk)
-	ckksEvaluator = NewCKKSEvaluator(params, EvaluationKey{Rlk: rlk, Rtks: rotkeys})
-
 	// Encode float data added by keystream to plaintext coefficients
+	fvEvaluator = NewMFVEvaluator(params, EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
 	coeffs := make([][]float64, 16)
 	for s := 0; s < 16; s++ {
 		coeffs[s] = make([]float64, params.N())
@@ -192,7 +233,7 @@ func BenchmarkRtF(b *testing.B) {
 	kCt := hera.EncKey(key)
 
 	// FV Keystream
-	benchOffLat := fmt.Sprintf("RtF Offline Latency With RtFParam[%d]", 1)
+	benchOffLat := fmt.Sprintf("RtF Offline Latency")
 	b.Run(benchOffLat, func(b *testing.B) {
 		fvKeystreams = hera.Crypt(nonces, kCt, heraModDown)
 		for i := 0; i < 1; i++ {
@@ -201,7 +242,7 @@ func BenchmarkRtF(b *testing.B) {
 		}
 	})
 	/* We assume that b.N == 1 */
-	benchOffThrput := fmt.Sprintf("RtF Offline Throughput With RtFParam[%d]", 1)
+	benchOffThrput := fmt.Sprintf("RtF Offline Throughput")
 	b.Run(benchOffThrput, func(b *testing.B) {
 		for i := 1; i < 16; i++ {
 			fvKeystreams[i] = fvEvaluator.SlotsToCoeffs(fvKeystreams[i], stcModDown)
@@ -209,10 +250,10 @@ func BenchmarkRtF(b *testing.B) {
 		}
 	})
 
-	benchOnline := fmt.Sprintf("RtF Online Lat with RtFParam[%d] x1", 1)
+	var ctBoot *Ciphertext
+	benchOnline := fmt.Sprintf("RtF Online Lat x1")
 	b.Run(benchOnline, func(b *testing.B) {
 		// Encrypt and mod switch to the lowest level
-
 		ciphertext := NewCiphertextFVLvl(params, 1, 0)
 		ciphertext.Value()[0] = plaintexts[0].Value()[0].CopyNew()
 		fvEvaluator.Sub(ciphertext, fvKeystreams[0], ciphertext)
@@ -226,13 +267,34 @@ func BenchmarkRtF(b *testing.B) {
 		// CAUTION: the scale of the ciphertext MUST be equal (or very close) to params.Scale
 		// To equalize the scale, the function evaluator.SetScale(ciphertext, parameters.Scale) can be used at the expense of one level.
 		if fullCoeffs {
-			hbtp.HalfBoot(ciphertext, false)
+			ctBoot, _ = hbtp.HalfBoot(ciphertext, false)
 		} else {
-			ctBoot0, ctBoot1 := hbtp.HalfBoot(ciphertext, true)
-			ctBoot := ckksEvaluator.RotateNew(ctBoot1, params.Slots()/2)
-			ckksEvaluator.Add(ctBoot, ctBoot0, ctBoot)
+			ctBoot, _ = hbtp.HalfBoot(ciphertext, true)
 		}
 	})
+	valuesWant := make([]complex128, params.Slots())
+	for i := 0; i < params.Slots(); i++ {
+		valuesWant[i] = complex(data[0][i], 0)
+	}
+
+	fmt.Println("Precision of HalfBoot(ciphertext)")
+	printDebug(params, ctBoot, valuesWant, ckksDecryptor, ckksEncoder)
+}
+
+func printDebug(params *Parameters, ciphertext *Ciphertext, valuesWant []complex128, decryptor CKKSDecryptor, encoder CKKSEncoder) {
+
+	valuesTest := encoder.DecodeComplex(decryptor.DecryptNew(ciphertext), params.LogSlots())
+	logSlots := params.LogSlots()
+	sigma := params.Sigma()
+
+	fmt.Printf("Level: %d (logQ = %d)\n", ciphertext.Level(), params.LogQLvl(ciphertext.Level()))
+	fmt.Printf("Scale: 2^%f\n", math.Log2(ciphertext.Scale()))
+	fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f...\n", valuesTest[0], valuesTest[1], valuesTest[2], valuesTest[3])
+	fmt.Printf("ValuesWant: %6.10f %6.10f %6.10f %6.10f...\n", valuesWant[0], valuesWant[1], valuesWant[2], valuesWant[3])
+
+	precStats := GetPrecisionStats(params, encoder, nil, valuesWant, valuesTest, logSlots, sigma)
+
+	fmt.Println(precStats.String())
 }
 
 func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint64) {
