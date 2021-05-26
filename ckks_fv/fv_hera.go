@@ -146,15 +146,28 @@ func (hera *mfvHera) modSwitchAuto(round int, noiseEstimator MFVNoiseEstimator, 
 			break
 		}
 	}
-	heraModDown[round] = nbModSwitch
-	for i := 0; i < 16; i++ {
-		hera.evaluator.ModSwitchMany(hera.stCt[i], hera.stCt[i], nbModSwitch)
-		hera.evaluator.ModSwitchMany(hera.mkCt[i], hera.mkCt[i], nbModSwitch)
+	if nbModSwitch != 0 {
+		tmp := hera.stCt[0].CopyNew().Ciphertext()
+		hera.evaluator.ModSwitchMany(hera.stCt[0], hera.stCt[0], nbModSwitch)
+		invBudgetNew, _ := hera.findBudgetInfo(noiseEstimator)
+
+		if invBudgetOld-invBudgetNew > 3 {
+			nbModSwitch--
+		}
+		hera.stCt[0] = tmp
 	}
 
-	invBudgetNew, errorBitsNew := hera.findBudgetInfo(noiseEstimator)
-	fmt.Printf("Hera Round %d [Budget | Error] : [%v | %v] -> [%v | %v]\n", round, invBudgetOld, errorBitsOld, invBudgetNew, errorBitsNew)
-	fmt.Printf("Hera modDown : %v\n\n", heraModDown)
+	if nbModSwitch > 0 {
+		heraModDown[round] = nbModSwitch
+		for i := 0; i < 16; i++ {
+			hera.evaluator.ModSwitchMany(hera.stCt[i], hera.stCt[i], nbModSwitch)
+			hera.evaluator.ModSwitchMany(hera.mkCt[i], hera.mkCt[i], nbModSwitch)
+		}
+
+		invBudgetNew, errorBitsNew := hera.findBudgetInfo(noiseEstimator)
+		fmt.Printf("Hera Round %d [Budget | Error] : [%v | %v] -> [%v | %v]\n", round, invBudgetOld, errorBitsOld, invBudgetNew, errorBitsNew)
+		fmt.Printf("Hera modDown : %v\n\n", heraModDown)
+	}
 }
 
 func (hera *mfvHera) modSwitch(nbSwitch int) {

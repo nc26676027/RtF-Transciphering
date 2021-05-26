@@ -1452,14 +1452,24 @@ func (eval *mfvEvaluator) modSwitchAuto(ct *Ciphertext, noiseEstimator MFVNoiseE
 			break
 		}
 	}
-	stcModDown[depth] = nbModSwitch
+
 	if nbModSwitch != 0 {
-		eval.ModSwitchMany(ct, ct, nbModSwitch)
+		tmp := ct.CopyNew().Ciphertext()
+		eval.ModSwitchMany(ct, tmp, nbModSwitch)
+		invBudgetNew, _ := eval.findBudgetInfo(tmp, noiseEstimator)
+
+		if invBudgetOld-invBudgetNew > 3 {
+			nbModSwitch--
+		}
 	}
 
-	invBudgetNew, errorBitsNew := eval.findBudgetInfo(ct, noiseEstimator)
-	fmt.Printf("StC Depth %d [Budget | Error] : [%v | %v] -> [%v | %v]\n", depth, invBudgetOld, errorBitsOld, invBudgetNew, errorBitsNew)
-	fmt.Printf("StC modDown : %v\n\n", stcModDown)
+	if nbModSwitch != 0 {
+		stcModDown[depth] = nbModSwitch
+		eval.ModSwitchMany(ct, ct, nbModSwitch)
+		invBudgetNew, errorBitsNew := eval.findBudgetInfo(ct, noiseEstimator)
+		fmt.Printf("StC Depth %d [Budget | Error] : [%v | %v] -> [%v | %v]\n", depth, invBudgetOld, errorBitsOld, invBudgetNew, errorBitsNew)
+		fmt.Printf("StC modDown : %v\n\n", stcModDown)
+	}
 }
 
 func (eval *mfvEvaluator) SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext) {
