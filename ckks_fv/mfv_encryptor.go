@@ -65,10 +65,9 @@ type encryptor struct {
 	poolQ    [3]*ring.Poly
 	poolP    [3]*ring.Poly
 
-	baseconverter   *ring.FastBasisExtender
-	gaussianSampler *ring.GaussianSampler
-	uniformSamplerQ *ring.UniformSampler
-	// uniformSamplerQPs           []*ring.UniformSampler
+	baseconverter              *ring.FastBasisExtender
+	gaussianSampler            *ring.GaussianSampler
+	uniformSamplerQ            *ring.UniformSampler
 	ternarySamplerQ            *ring.TernarySampler
 	ternarySamplerMontgomeryQ  *ring.TernarySampler
 	ternarySamplerMontgomeryQP *ring.TernarySampler
@@ -113,7 +112,6 @@ func newMFVEncryptor(params *Parameters) encryptor {
 
 	var baseconverter *ring.FastBasisExtender
 	var polypool, poolQ, poolP [3]*ring.Poly
-	// var uniformSamplerQPs []*ring.UniformSampler
 	var ternarySamplerMontgomeryQP *ring.TernarySampler
 
 	if len(params.pi) != 0 {
@@ -124,7 +122,6 @@ func newMFVEncryptor(params *Parameters) encryptor {
 
 		modCount := len(params.qi)
 		ringQPs = make([]*ring.Ring, modCount)
-		// uniformSamplerQPs = make([]*ring.UniformSampler, modCount)
 
 		for i := 0; i < modCount; i++ {
 			moduli := make([]uint64, i+1)
@@ -132,7 +129,6 @@ func newMFVEncryptor(params *Parameters) encryptor {
 			if ringQPs[i], err = ring.NewRing(params.N(), append(moduli, params.pi...)); err != nil {
 				panic(err)
 			}
-			// uniformSamplerQPs[i] = ring.NewUniformSampler(prng, ringQPs[i])
 		}
 
 		ringQPmax := ringQPs[modCount-1]
@@ -145,17 +141,16 @@ func newMFVEncryptor(params *Parameters) encryptor {
 	}
 
 	return encryptor{
-		params:          params.Copy(),
-		ringQ:           ringQ,
-		ringP:           ringP,
-		ringQPs:         ringQPs,
-		polypool:        polypool,
-		poolQ:           poolQ,
-		poolP:           poolP,
-		baseconverter:   baseconverter,
-		gaussianSampler: ring.NewGaussianSampler(prng),
-		uniformSamplerQ: ring.NewUniformSampler(prng, ringQ),
-		// uniformSamplerQPs:           uniformSamplerQPs,
+		params:                     params.Copy(),
+		ringQ:                      ringQ,
+		ringP:                      ringP,
+		ringQPs:                    ringQPs,
+		polypool:                   polypool,
+		poolQ:                      poolQ,
+		poolP:                      poolP,
+		baseconverter:              baseconverter,
+		gaussianSampler:            ring.NewGaussianSampler(prng),
+		uniformSamplerQ:            ring.NewUniformSampler(prng, ringQ),
 		ternarySamplerQ:            ring.NewTernarySampler(prng, ringQ, 0.5, false),
 		ternarySamplerMontgomeryQ:  ring.NewTernarySampler(prng, ringQ, 0.5, true),
 		ternarySamplerMontgomeryQP: ternarySamplerMontgomeryQP,

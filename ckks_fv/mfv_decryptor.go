@@ -58,28 +58,21 @@ func (decryptor *mfvDecryptor) Decrypt(ciphertext *Ciphertext, p *Plaintext) {
 	tmp := decryptor.polypool
 
 	level := p.Level()
-	// ringQ.NTTLazy(ciphertext.value[ciphertext.Degree()], p.value)
 	ringQ.NTTLazyLvl(level, ciphertext.value[ciphertext.Degree()], p.value)
 
 	for i := ciphertext.Degree(); i > 0; i-- {
-		// ringQ.MulCoeffsMontgomery(p.value, decryptor.sk.Value, p.value)
-		// ringQ.NTTLazy(ciphertext.value[i-1], tmp)
-		// ringQ.Add(p.value, tmp, p.value)
 		ringQ.MulCoeffsMontgomeryLvl(level, p.value, decryptor.sk.Value, p.value)
 		ringQ.NTTLazyLvl(level, ciphertext.value[i-1], tmp)
 		ringQ.AddLvl(level, p.value, tmp, p.value)
 
 		if i&3 == 3 {
-			// ringQ.Reduce(p.value, p.value)
 			ringQ.ReduceLvl(level, p.value, p.value)
 		}
 	}
 
 	if (ciphertext.Degree())&3 != 3 {
-		// ringQ.Reduce(p.value, p.value)
 		ringQ.ReduceLvl(level, p.value, p.value)
 	}
 
-	// ringQ.InvNTT(p.value, p.value)
 	ringQ.InvNTTLvl(level, p.value, p.value)
 }

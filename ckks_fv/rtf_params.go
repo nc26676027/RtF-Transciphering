@@ -26,20 +26,20 @@ var HeraModDownParams128 = [][]int{
 
 // SlotToCoeff mod down indices for 80-bit security
 var StcModDownParams80 = [][]int{
-	{1, 0, 1, 1, 1, 1, 1, 1}, // with RtF param 128f
-	{0},                      // with RtF param 128s
-	{1, 1, 0, 1, 1, 1, 0, 0}, // with RtF param 128af
-	{0},                      // with RtF param 128as
-	{0, 1, 1, 1, 0, 1, 1},    // with RtF param 128h
+	{1, 0, 1, 1, 1, 1, 1, 1}, // with RtF param 128f and radix 2
+	{0},                      // with RtF param 128s and radix 0
+	{1, 1, 0, 1, 1, 1, 0, 0}, // with RtF param 128af and radix 2
+	{0},                      // with RtF param 128as and radix 0
+	{0, 1, 1, 1, 0, 1, 1},    // with RtF param 128h and radix 2
 }
 
 var StcModDownParams128 = [][]int{
-	{0, 1, 1, 1, 1, 1, 1, 1}, // with RtF param 128f
-	{1},                      // with RtF param 128s
-	{1, 1, 0, 1, 1, 1, 0, 0}, // with RtF param 128af
-	{0, 1},                   // with RtF param 128as
-	{0, 1, 1, 1, 1, 0, 1},    // with RtF param 128h
-	{0, 1, 1, 1},             // with RtF param 128-9
+	{0, 1, 1, 1, 1, 1, 1, 1}, // with RtF param 128f and radix 2
+	{1},                      // with RtF param 128s and radix 0
+	{1, 1, 0, 1, 1, 1, 0, 0}, // with RtF param 128af and radix 2
+	{0, 1},                   // with RtF param 128as and radix 2
+	{0, 1, 1, 1, 1, 0, 1},    // with RtF param 128h and radix 2
+	{0, 1, 1, 1},             // with RtF param 128-9 and radix 2
 }
 
 var RtFParams = []*HalfBootParameters{

@@ -10,46 +10,57 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+// Benchmark RtF framework for 80-bit security full-slots parameter
 func BenchmarkRtF80f(b *testing.B) {
 	benchmarkRtF(b, "80f", 4, 0, 2, true)
 }
 
+// Benchmark RtF framework for 80-bit security 4-slots parameter
 func BenchmarkRtF80s(b *testing.B) {
 	benchmarkRtF(b, "80s", 4, 1, 0, false)
 }
 
+// Benchmark RtF framework for 80-bit security full-slots parameter with arcsine evaluation
 func BenchmarkRtF80af(b *testing.B) {
 	benchmarkRtF(b, "80af", 4, 2, 2, true)
 }
 
+// Benchmark RtF framework for 80-bit security 4-slots parameter with arcsine evaluation
 func BenchmarkRtF80as(b *testing.B) {
 	benchmarkRtF(b, "80as", 4, 3, 0, false)
 }
 
+// Benchmark RtF framework for 80-bit security half-slots parameter
 func BenchmarkRtF80h(b *testing.B) {
 	benchmarkRtF(b, "80h", 4, 4, 2, false)
 }
 
+// Benchmark RtF framework for 128-bit security full-slots parameter
 func BenchmarkRtF128f(b *testing.B) {
 	benchmarkRtF(b, "128f", 5, 0, 2, true)
 }
 
+// Benchmark RtF framework for 128-bit security 4-slots parameter
 func BenchmarkRtF128s(b *testing.B) {
 	benchmarkRtF(b, "128s", 5, 1, 0, false)
 }
 
+// Benchmark RtF framework for 128-bit security full-slots parameter with arcsine evaluation
 func BenchmarkRtF128af(b *testing.B) {
 	benchmarkRtF(b, "128af", 5, 2, 2, true)
 }
 
+// Benchmark RtF framework for 128-bit security 4-slots parameter with arcsine evaluation
 func BenchmarkRtF128as(b *testing.B) {
 	benchmarkRtF(b, "128as", 5, 3, 2, false)
 }
 
+// Benchmark RtF framework for 128-bit security half-slots parameter
 func BenchmarkRtF128h(b *testing.B) {
 	benchmarkRtF(b, "128f", 5, 4, 2, false)
 }
 
+// Benchmark RtF framework for 128-bit security 9-slots parameter
 func BenchmarkRtF128_9(b *testing.B) {
 	benchmarkRtF(b, "128-9", 5, 5, 2, false)
 }
@@ -76,7 +87,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 	var keystream [][]uint64
 	var fvKeystreams []*Ciphertext
 
-	// Half-Bootstrapping parameters
+	// RtF parameters
 	// Six sets of parameters (index 0 to 5) ensuring 128 bit of security
 	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
 	// LogSlots is hardcoded in the parameters, but can be changed from 4 to 15.

@@ -534,7 +534,6 @@ func (eval *mfvEvaluator) tensoreLowDeg(ct0, ct1 *Element) {
 		eval.ringQ.MulCoeffsMontgomeryLvl(level, c00Q, c1Q1[1], c2Q1[1])
 		eval.ringQMul.MulCoeffsMontgomery(c00Q2, c1Q2[1], c2Q2[1])
 
-		// eval.ringQ.MulCoeffsMontgomeryAndAddNoMod(c01Q, c1Q1[0], c2Q1[1])
 		eval.ringQ.MulCoeffsMontgomeryAndAddNoModLvl(level, c01Q, c1Q1[0], c2Q1[1])
 		eval.ringQMul.MulCoeffsMontgomeryAndAddNoMod(c01P, c1Q2[0], c2Q2[1])
 
@@ -606,7 +605,6 @@ func (eval *mfvEvaluator) tensortLargeDeg(ct0, ct1 *Element) {
 
 func (eval *mfvEvaluator) quantize(ctOut *Element) {
 
-	// levelQ := len(eval.ringQ.Modulus) - 1
 	level := ctOut.Level()
 	levelQMul := len(eval.ringQMul.Modulus) - 1
 
@@ -1254,7 +1252,6 @@ func (eval *mfvEvaluator) SwitchKeysInPlaceNoModDown(level int, cx *ring.Poly, e
 	c2QiQ := eval.poolQ[0][0]
 	c2QiP := eval.poolP[0]
 
-	// c2 := eval.poolNTT // but stores in InvNTT domain
 	c2 := eval.poolQ[1][0]
 
 	evakey0Q := new(ring.Poly)
@@ -1377,6 +1374,8 @@ func (eval *mfvEvaluator) TransformToNTT(ct0 *Ciphertext, ctOut *Ciphertext) {
 	ctOut.SetIsNTT(true)
 }
 
+// SlotsToCoeffs returns ctOut whose coefficients are data stored in slots of ct
+// with dropping modulus as given in stcModDown
 func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext, stcModDown []int) (ctOut *Ciphertext) {
 	if eval.pDcds == nil {
 		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
@@ -1405,6 +1404,8 @@ func (eval *mfvEvaluator) SlotsToCoeffs(ct *Ciphertext, stcModDown []int) (ctOut
 	return
 }
 
+// SlotsToCoeffsNoModSwitch returns ctOut whose coefficients are data stored in slots of ct
+// without modulus switching
 func (eval *mfvEvaluator) SlotsToCoeffsNoModSwitch(ct *Ciphertext) (ctOut *Ciphertext) {
 	if eval.pDcds == nil {
 		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
@@ -1472,6 +1473,7 @@ func (eval *mfvEvaluator) modSwitchAuto(ct *Ciphertext, noiseEstimator MFVNoiseE
 	}
 }
 
+// SlotsToCoeffsAutoModSwitch returns ctOut whose coefficients are data stored in slots of ct
 func (eval *mfvEvaluator) SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext) {
 	if eval.pDcds == nil {
 		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")

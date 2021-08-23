@@ -222,7 +222,6 @@ func (encoder *mfvEncoder) EncodeUintRingT(coeffs []uint64, p *PlaintextRingT) {
 	}
 
 	for i := len(coeffs); i < len(encoder.indexMatrix); i++ {
-		// p.value.Coeffs[0][encoder.indexMatrix[i]] = 0
 		p.value.Coeffs[0][encoder.indexMatrix[i]] = coeffs[i%len(coeffs)]
 	}
 

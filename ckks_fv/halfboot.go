@@ -168,47 +168,11 @@ func CoeffsToSlotsWithoutRepack(vec *Ciphertext, pDFTInv []*PtDiagMatrix, eval C
 
 	eval.DivByi(ct1, ct1)
 
-	// If repacking, then ct0 and ct1 right n/2 slots are zero.
-	// if eval.(*ckksEvaluator).params.LogSlots() < eval.(*ckksEvaluator).params.LogN()-1 {
-	// 	eval.Rotate(ct1, eval.(*ckksEvaluator).params.Slots(), ct1)
-	// 	eval.Add(ct0, ct1, ct0)
-	// 	return ct0, nil
-	// }
-
 	zV = nil
 	zVconj = nil
 
 	return ct0, ct1
 }
-
-/*
-func SlotsToCoeffs(ct0, ct1 *Ciphertext, pDFT []*PtDiagMatrix, eval CKKSEvaluator) (ct *Ciphertext) {
-
-	// If full packing, the repacking can be done directly using ct0 and ct1.
-	if ct1 != nil {
-		eval.MultByi(ct1, ct1)
-		eval.Add(ct0, ct1, ct0)
-	}
-
-	ct1 = nil
-
-	return dft(ct0, pDFT, false, eval)
-}
-
-func dft(vec *Ciphertext, plainVectors []*PtDiagMatrix, forward bool, eval CKKSEvaluator) *Ciphertext {
-
-	// Sequentially multiplies w with the provided dft matrices.
-	for _, plainVector := range plainVectors {
-		scale := vec.Scale()
-		vec = eval.LinearTransform(vec, plainVector)[0]
-		if err := eval.Rescale(vec, scale, vec); err != nil {
-			panic(err)
-		}
-	}
-
-	return vec
-}
-*/
 
 // Sine Evaluation ct0 = Q/(2pi) * sin((2pi/Q) * ct0)
 func (hbtp *HalfBootstrapper) evaluateSine(ct0, ct1 *Ciphertext) (*Ciphertext, *Ciphertext) {
