@@ -2,7 +2,7 @@ package ckks_fv
 
 /* ModDown Parameters*/
 // ModDownParams denotes optimized modulus switching indices for given RtF parameters
-// computed from github.com/smilecjf/lattigo/v2/examples/ckks_fv/main
+// (See github.com/smilecjf/lattigo/v2/examples/ckks_fv/main for an example)
 // StcModDownParams assumes that the decoding matrix is factorized with radix 2.
 
 // HERA mod down indices for 80-bit security parameter

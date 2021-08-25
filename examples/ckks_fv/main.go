@@ -128,7 +128,7 @@ func findModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 
 	nbInitModDown := 0
 	cutBits := logQi[qiCount-1]
-	for cutBits+5 < minInvBudget {
+	for cutBits+40 < minInvBudget { // if minInvBudget is too close to cutBits, decryption can be failed
 		nbInitModDown++
 		cutBits += logQi[qiCount-nbInitModDown-1]
 	}
@@ -141,7 +141,9 @@ func findModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	_, stcModDown = fvEvaluator.SlotsToCoeffsAutoModSwitch(stCt[0], fvNoiseEstimator)
 	for i := 0; i < 16; i++ {
 		ksSlot := fvEvaluator.SlotsToCoeffs(stCt[i], stcModDown)
-		fvEvaluator.ModSwitchMany(ksSlot, ksSlot, ksSlot.Level())
+		if ksSlot.Level() > 0 {
+			fvEvaluator.ModSwitchMany(ksSlot, ksSlot, ksSlot.Level())
+		}
 
 		ksCt := fvDecryptor.DecryptNew(ksSlot)
 		ksCoef := ckks_fv.NewPlaintextRingT(params)
