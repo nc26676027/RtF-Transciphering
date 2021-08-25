@@ -52,7 +52,7 @@ type MFVEvaluator interface {
 	// Linear Transformation
 	SlotsToCoeffs(ct *Ciphertext, stcModDown []int) (ctOut *Ciphertext)
 	SlotsToCoeffsNoModSwitch(ct *Ciphertext) (ctOut *Ciphertext)
-	SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext)
+	SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext, stcModDown []int)
 	LinearTransform(vec *Ciphertext, linearTransform interface{}) (res []*Ciphertext)
 	MultiplyByDiabMatrix(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
 	MultiplyByDiabMatrixNaive(vec, res *Ciphertext, matrix *PtDiagMatrixT, c2QiQDecomp, c2QiPDecomp []*ring.Poly)
@@ -1456,12 +1456,13 @@ func (eval *mfvEvaluator) modSwitchAuto(ct *Ciphertext, noiseEstimator MFVNoiseE
 
 	if nbModSwitch != 0 {
 		tmp := ct.CopyNew().Ciphertext()
-		eval.ModSwitchMany(ct, tmp, nbModSwitch)
+		eval.ModSwitchMany(ct, ct, nbModSwitch)
 		invBudgetNew, _ := eval.findBudgetInfo(tmp, noiseEstimator)
 
 		if invBudgetOld-invBudgetNew > 3 {
 			nbModSwitch--
 		}
+		ct = tmp
 	}
 
 	if nbModSwitch != 0 {
@@ -1473,8 +1474,9 @@ func (eval *mfvEvaluator) modSwitchAuto(ct *Ciphertext, noiseEstimator MFVNoiseE
 	}
 }
 
-// SlotsToCoeffsAutoModSwitch returns ctOut whose coefficients are data stored in slots of ct
-func (eval *mfvEvaluator) SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext) {
+// SlotsToCoeffs returns ctOut whose coefficients are data stored in slots of ct
+// with automatic modulus switching as written in stcModDown
+func (eval *mfvEvaluator) SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (ctOut *Ciphertext, stcModDown []int) {
 	if eval.pDcds == nil {
 		panic("cannot SlotsToCoeffs: evaluator does not have StC matrices")
 	}
@@ -1483,7 +1485,7 @@ func (eval *mfvEvaluator) SlotsToCoeffsAutoModSwitch(ct *Ciphertext, noiseEstima
 	level := ct.Level()
 	depth := len(eval.pDcds[level]) - 1
 
-	stcModDown := make([]int, depth)
+	stcModDown = make([]int, depth)
 	for i := 0; i < depth-1; i++ {
 		eval.modSwitchAuto(ctOut, noiseEstimator, i, stcModDown)
 		level = ctOut.Level()

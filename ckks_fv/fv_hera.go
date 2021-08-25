@@ -10,7 +10,7 @@ import (
 type MFVHera interface {
 	Crypt(nonce [][]byte, kCt []*Ciphertext, heraModDown []int) []*Ciphertext
 	CryptNoModSwitch(nonce [][]byte, kCt []*Ciphertext) []*Ciphertext
-	CryptAutoModSwitch(nonce [][]byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) []*Ciphertext
+	CryptAutoModSwitch(nonce [][]byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) (res []*Ciphertext, heraModDown []int)
 	Reset(nbInitModDown int)
 	EncKey(key []uint64) (res []*Ciphertext)
 }
@@ -79,6 +79,7 @@ func NewMFVHera(numRound int, params *Parameters, encoder MFVEncoder, encryptor 
 
 func (hera *mfvHera) Reset(nbInitModDown int) {
 	// Precompute Initial States
+	hera.nbInitModDown = nbInitModDown
 	state := make([]uint64, hera.slots)
 
 	for i := 0; i < 16; i++ {
@@ -119,10 +120,19 @@ func (hera *mfvHera) init(nonce [][]byte) {
 	}
 }
 
-func (hera *mfvHera) findBudgetInfo(noiseEstimator MFVNoiseEstimator) (invBudget, errorBits int) {
+func (hera *mfvHera) findBudgetInfo(noiseEstimator MFVNoiseEstimator) (maxInvBudget, minErrorBits int) {
 	T := ring.NewUint(hera.params.T())
-	invBudget = noiseEstimator.InvariantNoiseBudget(hera.stCt[0])
-	errorBits = hera.params.LogQLvl(hera.stCt[0].Level()) - T.BitLen() - invBudget
+	maxInvBudget = 0
+	minErrorBits = 0
+	for i := 0; i < 16; i++ {
+		invBudget := noiseEstimator.InvariantNoiseBudget(hera.stCt[i])
+		errorBits := hera.params.LogQLvl(hera.stCt[i].Level()) - T.BitLen() - invBudget
+
+		if invBudget > maxInvBudget {
+			maxInvBudget = invBudget
+			minErrorBits = errorBits
+		}
+	}
 	return
 }
 
@@ -180,6 +190,7 @@ func (hera *mfvHera) modSwitch(nbSwitch int) {
 	}
 }
 
+// Compute ciphertexts without modulus switching
 func (hera *mfvHera) CryptNoModSwitch(nonce [][]byte, kCt []*Ciphertext) []*Ciphertext {
 	for st := 0; st < 16; st++ {
 		hera.mkCt[st] = kCt[st].CopyNew().Ciphertext()
@@ -199,7 +210,8 @@ func (hera *mfvHera) CryptNoModSwitch(nonce [][]byte, kCt []*Ciphertext) []*Ciph
 	return hera.stCt
 }
 
-func (hera *mfvHera) CryptAutoModSwitch(nonce [][]byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) []*Ciphertext {
+// Compute ciphertexts with automatic modulus switching
+func (hera *mfvHera) CryptAutoModSwitch(nonce [][]byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) ([]*Ciphertext, []int) {
 	heraModDown := make([]int, hera.numRound+1)
 	heraModDown[0] = hera.nbInitModDown
 	for st := 0; st < 16; st++ {
@@ -219,9 +231,10 @@ func (hera *mfvHera) CryptAutoModSwitch(nonce [][]byte, kCt []*Ciphertext, noise
 	hera.modSwitchAuto(hera.numRound, noiseEstimator, heraModDown)
 	hera.linLayer()
 	hera.addRoundKey(hera.numRound, true)
-	return hera.stCt
+	return hera.stCt, heraModDown
 }
 
+// Compute ciphertexts with modulus switching as given in heraModDown
 func (hera *mfvHera) Crypt(nonce [][]byte, kCt []*Ciphertext, heraModDown []int) []*Ciphertext {
 	if heraModDown[0] != hera.nbInitModDown {
 		errorString := fmt.Sprintf("nbInitModDown expected %d but %d given", hera.nbInitModDown, heraModDown[0])
