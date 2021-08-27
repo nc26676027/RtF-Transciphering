@@ -33,7 +33,7 @@ func findModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	var stcModDown []int
 
 	// RtF parameters
-	// Six sets of parameters (index 0 to 5) ensuring 128 bit of security
+	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
 	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
 	// LogSlots is hardcoded in the parameters, but can be changed from 4 to 15.
 	// When changing logSlots make sure that the number of levels allocated to CtS is
@@ -279,5 +279,5 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 }
 
 func main() {
-	findModDown(4, 4, 2, false)
+	findModDown(4, 0, 2, false)
 }
