@@ -278,6 +278,167 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 	return
 }
 
+func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key []uint64, t uint64) (state []uint64) {
+	xof := sha3.NewShake256()
+	xof.Write(nonce)
+	xof.Write(counter)
+	state = make([]uint64, blocksize)
+
+	rks := make([][]uint64, numRound+1)
+
+	for r := 0; r <= numRound; r++ {
+		rks[r] = make([]uint64, blocksize)
+		for i := 0; i < blocksize; i++ {
+			rks[r][i] = ckks_fv.SampleZtx(xof, t) * key[i] % t
+			// rks[r][i] = uint64(i+1) * key[i] % t
+		}
+	}
+
+	for i := 0; i < blocksize; i++ {
+		state[i] = uint64(i + 1)
+	}
+
+	// Initial AddRoundKey
+	for i := 0; i < blocksize; i++ {
+		state[i] = (state[i] + rks[0][i]) % t
+	}
+
+	// Round Functions
+	for r := 1; r < numRound; r++ {
+		rubatoLinearLayer(state, t)
+		rubatoFeistel(state, t)
+		for i := 0; i < blocksize; i++ {
+			state[i] = (state[i] + rks[r][i]) % t
+		}
+	}
+
+	// Finalization
+	rubatoLinearLayer(state, t)
+	rubatoFeistel(state, t)
+	rubatoLinearLayer(state, t)
+	for i := 0; i < blocksize; i++ {
+		state[i] = (state[i] + rks[numRound][i]) % t
+	}
+	state = state[0 : blocksize-4]
+
+	return
+}
+
+func rubatoLinearLayer(state []uint64, t uint64) {
+	blocksize := len(state)
+	buf := make([]uint64, blocksize)
+
+	if blocksize == 16 {
+		// MixColumns
+		for row := 0; row < 4; row++ {
+			for col := 0; col < 4; col++ {
+				buf[row*4+col] = 2 * state[row*4+col]
+				buf[row*4+col] += 3 * state[((row+1)%4)*4+col]
+				buf[row*4+col] += state[((row+2)%4)*4+col]
+				buf[row*4+col] += state[((row+3)%4)*4+col]
+				buf[row*4+col] %= t
+			}
+		}
+		// MixRows
+		for row := 0; row < 4; row++ {
+			for col := 0; col < 4; col++ {
+				state[row*4+col] = 2 * buf[row*4+col]
+				state[row*4+col] += 3 * buf[row*4+(col+1)%4]
+				state[row*4+col] += buf[row*4+(col+2)%4]
+				state[row*4+col] += buf[row*4+(col+3)%4]
+				state[row*4+col] %= t
+			}
+		}
+	} else if blocksize == 36 {
+		// MixColumns
+		for row := 0; row < 6; row++ {
+			for col := 0; col < 6; col++ {
+				buf[row*6+col] = 4 * state[row*6+col]
+				buf[row*6+col] += 2 * state[((row+1)%6)*6+col]
+				buf[row*6+col] += 4 * state[((row+2)%6)*6+col]
+				buf[row*6+col] += 3 * state[((row+3)%6)*6+col]
+				buf[row*6+col] += state[((row+4)%6)*6+col]
+				buf[row*6+col] += state[((row+5)%6)*6+col]
+				buf[row*6+col] %= t
+			}
+		}
+		// MixRows
+		for row := 0; row < 6; row++ {
+			for col := 0; col < 6; col++ {
+				state[row*6+col] = 4 * buf[row*6+col]
+				state[row*6+col] += 2 * buf[row*6+(col+1)%6]
+				state[row*6+col] += 4 * buf[row*6+(col+2)%6]
+				state[row*6+col] += 3 * buf[row*6+(col+3)%6]
+				state[row*6+col] += buf[row*6+(col+4)%6]
+				state[row*6+col] += buf[row*6+(col+5)%6]
+				state[row*6+col] %= t
+			}
+		}
+	} else if blocksize == 64 {
+		// MixColumns
+		for row := 0; row < 8; row++ {
+			for col := 0; col < 8; col++ {
+				buf[row*8+col] = 5 * state[row*8+col]
+				buf[row*8+col] += 3 * state[((row+1)%8)*8+col]
+				buf[row*8+col] += 4 * state[((row+2)%8)*8+col]
+				buf[row*8+col] += 3 * state[((row+3)%8)*8+col]
+				buf[row*8+col] += 6 * state[((row+4)%8)*8+col]
+				buf[row*8+col] += 2 * state[((row+5)%8)*8+col]
+				buf[row*8+col] += state[((row+6)%8)*8+col]
+				buf[row*8+col] += state[((row+7)%8)*8+col]
+				buf[row*8+col] %= t
+			}
+		}
+		// MixRows
+		for row := 0; row < 8; row++ {
+			for col := 0; col < 8; col++ {
+				state[row*8+col] = 5 * buf[row*8+col]
+				state[row*8+col] += 3 * buf[row*8+(col+1)%8]
+				state[row*8+col] += 4 * buf[row*8+(col+2)%8]
+				state[row*8+col] += 3 * buf[row*8+(col+3)%8]
+				state[row*8+col] += 6 * buf[row*8+(col+4)%8]
+				state[row*8+col] += 2 * buf[row*8+(col+5)%8]
+				state[row*8+col] += buf[row*8+(col+6)%8]
+				state[row*8+col] += buf[row*8+(col+7)%8]
+				state[row*8+col] %= t
+			}
+		}
+	} else {
+		panic("Invalid blocksize")
+	}
+}
+
+func rubatoFeistel(state []uint64, t uint64) {
+	blocksize := len(state)
+	buf := make([]uint64, blocksize)
+
+	for i := 0; i < blocksize; i++ {
+		buf[i] = state[i]
+	}
+
+	for i := 1; i < blocksize; i++ {
+		state[i] = (buf[i] + buf[i-1]*buf[i-1]) % t
+	}
+}
+
 func main() {
-	findModDown(4, 0, 2, false)
+	// findModDown(4, 0, 2, false)
+
+	numRound := 5
+	blocksize := 16 // Should be 16, 36 or 64
+	nonce := make([]byte, 8)
+	counter := make([]byte, 8)
+	key := make([]uint64, blocksize)
+	t := uint64(0x3ffc0001)
+
+	// Generate secret key
+	for i := 0; i < blocksize; i++ {
+		key[i] = uint64(i+1) % t
+	}
+
+	// Generate nonce
+	rand.Read(nonce)
+
+	state := plainRubato(blocksize, numRound, nonce, counter, key, t)
+	fmt.Println(state)
 }
