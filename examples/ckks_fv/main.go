@@ -421,9 +421,7 @@ func rubatoFeistel(state []uint64, t uint64) {
 	}
 }
 
-func main() {
-	// findModDown(4, 0, 2, false)
-
+func testPlainRubato() {
 	numRound := 5
 	blocksize := 16 // Should be 16, 36 or 64
 	nonce := make([]byte, 8)
@@ -441,4 +439,78 @@ func main() {
 
 	state := plainRubato(blocksize, numRound, nonce, counter, key, t)
 	fmt.Println(state)
+}
+
+func testFVRubato(blocksize int, numRound int) {
+	var kgen ckks_fv.KeyGenerator
+	var fvEncoder ckks_fv.MFVEncoder
+	var sk *ckks_fv.SecretKey
+	var pk *ckks_fv.PublicKey
+	var fvEncryptor ckks_fv.MFVEncryptor
+	var fvDecryptor ckks_fv.MFVDecryptor
+	var fvEvaluator ckks_fv.MFVEvaluator
+	// var fvNoiseEstimator ckks_fv.MFVNoiseEstimator
+	var rubato ckks_fv.MFVRubato
+
+	var nonces [][]byte
+	var key []uint64
+	// var stCt []*ckks_fv.Ciphertext
+	var keystream [][]uint64
+	var keystreamCt []*ckks_fv.Ciphertext
+
+	params := ckks_fv.DefaultFVParams[3]
+	params.SetT(0x1ffc0001)
+
+	// Scheme context and keys
+	fmt.Println("Key generation...")
+	kgen = ckks_fv.NewKeyGenerator(params)
+
+	sk, pk = kgen.GenKeyPairSparse(192)
+
+	fvEncoder = ckks_fv.NewMFVEncoder(params)
+	fvEncryptor = ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	fvDecryptor = ckks_fv.NewMFVDecryptor(params, sk)
+	// fvNoiseEstimator = ckks_fv.NewMFVNoiseEstimator(params, sk)
+
+	rlk := kgen.GenRelinearizationKey(sk)
+	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk}, nil)
+
+	// Generating data set
+	key = make([]uint64, blocksize)
+	for i := 0; i < blocksize; i++ {
+		key[i] = uint64(i + 1)
+	}
+
+	nonces = make([][]byte, params.FVSlots())
+	for i := 0; i < params.FVSlots(); i++ {
+		nonces[i] = make([]byte, 64)
+		rand.Read(nonces[i])
+	}
+	counter := make([]byte, 64)
+
+	// Compute plain Rubato keystream
+	fmt.Println("Computing plain keystream...")
+	keystream = make([][]uint64, params.FVSlots())
+	for i := 0; i < params.FVSlots(); i++ {
+		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.T())
+	}
+
+	// Evaluate the Rubato keystream
+	fmt.Println("Evaluating HE keystream...")
+	rubato = ckks_fv.NewMFVRubato(blocksize, numRound, params, fvEncoder, fvEncryptor, fvEvaluator, 0)
+	hekey := rubato.EncKey(key)
+	keystreamCt = rubato.CryptNoModSwitch(nonces, counter, hekey)
+
+	// Decrypt and decode the Rubato keystream
+	for i := 0; i < blocksize-4; i++ {
+		val := fvEncoder.DecodeUintSmallNew(fvDecryptor.DecryptNew(keystreamCt[i]))
+		resString := fmt.Sprintf("keystream[%d]: he(%d), plain(%d)", i, val[0], keystream[0][i])
+		fmt.Println(resString)
+	}
+}
+
+func main() {
+	// findModDown(4, 0, 2, false)
+	// testPlainRubato()
+	testFVRubato(64, 10)
 }
