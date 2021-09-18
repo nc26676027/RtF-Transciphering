@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func findModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
+func findHeraModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	var err error
 
 	var kgen ckks_fv.KeyGenerator
@@ -84,7 +84,7 @@ func findModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 
 	keystream = make([][]uint64, params.FVSlots())
 	for i := 0; i < params.FVSlots(); i++ {
-		keystream[i] = plainHera(numRound, nonces[i], key, params.T())
+		keystream[i] = plainHera(numRound, nonces[i], key, params.PlainModulus())
 	}
 
 	// Find proper nbInitModDown value for fvHera
@@ -163,7 +163,7 @@ func findModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	fmt.Printf("SlotsToCoeffs modDown : %v\n", stcModDown)
 }
 
-func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint64) {
+func plainHera(roundNum int, nonce []byte, key []uint64, plainModulus uint64) (state []uint64) {
 	nr := roundNum
 	xof := sha3.NewShake256()
 	xof.Write(nonce)
@@ -174,7 +174,7 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 	for r := 0; r <= nr; r++ {
 		rks[r] = make([]uint64, 16)
 		for st := 0; st < 16; st++ {
-			rks[r][st] = ckks_fv.SampleZtx(xof, t) * key[st] % t
+			rks[r][st] = ckks_fv.SampleZqx(xof, plainModulus) * key[st] % plainModulus
 		}
 	}
 
@@ -184,7 +184,7 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 
 	// round0
 	for st := 0; st < 16; st++ {
-		state[st] = (state[st] + rks[0][st]) % t
+		state[st] = (state[st] + rks[0][st]) % plainModulus
 	}
 
 	for r := 1; r < roundNum; r++ {
@@ -194,10 +194,10 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 			y2 := 2*state[col+8] + 3*state[col+12] + 1*state[col] + 1*state[col+4]
 			y3 := 2*state[col+12] + 3*state[col] + 1*state[col+4] + 1*state[col+8]
 
-			state[col] = y0 % t
-			state[col+4] = y1 % t
-			state[col+8] = y2 % t
-			state[col+12] = y3 % t
+			state[col] = y0 % plainModulus
+			state[col+4] = y1 % plainModulus
+			state[col+8] = y2 % plainModulus
+			state[col+12] = y3 % plainModulus
 		}
 
 		for row := 0; row < 4; row++ {
@@ -206,18 +206,18 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 			y2 := 2*state[4*row+2] + 3*state[4*row+3] + 1*state[4*row] + 1*state[4*row+1]
 			y3 := 2*state[4*row+3] + 3*state[4*row] + 1*state[4*row+1] + 1*state[4*row+2]
 
-			state[4*row] = y0 % t
-			state[4*row+1] = y1 % t
-			state[4*row+2] = y2 % t
-			state[4*row+3] = y3 % t
+			state[4*row] = y0 % plainModulus
+			state[4*row+1] = y1 % plainModulus
+			state[4*row+2] = y2 % plainModulus
+			state[4*row+3] = y3 % plainModulus
 		}
 
 		for st := 0; st < 16; st++ {
-			state[st] = (state[st] * state[st] % t) * state[st] % t
+			state[st] = (state[st] * state[st] % plainModulus) * state[st] % plainModulus
 		}
 
 		for st := 0; st < 16; st++ {
-			state[st] = (state[st] + rks[r][st]) % t
+			state[st] = (state[st] + rks[r][st]) % plainModulus
 		}
 	}
 	for col := 0; col < 4; col++ {
@@ -226,10 +226,10 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[col+8] + 3*state[col+12] + 1*state[col] + 1*state[col+4]
 		y3 := 2*state[col+12] + 3*state[col] + 1*state[col+4] + 1*state[col+8]
 
-		state[col] = y0 % t
-		state[col+4] = y1 % t
-		state[col+8] = y2 % t
-		state[col+12] = y3 % t
+		state[col] = y0 % plainModulus
+		state[col+4] = y1 % plainModulus
+		state[col+8] = y2 % plainModulus
+		state[col+12] = y3 % plainModulus
 	}
 
 	for row := 0; row < 4; row++ {
@@ -238,14 +238,14 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[4*row+2] + 3*state[4*row+3] + 1*state[4*row] + 1*state[4*row+1]
 		y3 := 2*state[4*row+3] + 3*state[4*row] + 1*state[4*row+1] + 1*state[4*row+2]
 
-		state[4*row] = y0 % t
-		state[4*row+1] = y1 % t
-		state[4*row+2] = y2 % t
-		state[4*row+3] = y3 % t
+		state[4*row] = y0 % plainModulus
+		state[4*row+1] = y1 % plainModulus
+		state[4*row+2] = y2 % plainModulus
+		state[4*row+3] = y3 % plainModulus
 	}
 
 	for st := 0; st < 16; st++ {
-		state[st] = (state[st] * state[st] % t) * state[st] % t
+		state[st] = (state[st] * state[st] % plainModulus) * state[st] % plainModulus
 	}
 
 	for col := 0; col < 4; col++ {
@@ -254,10 +254,10 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[col+8] + 3*state[col+12] + 1*state[col] + 1*state[col+4]
 		y3 := 2*state[col+12] + 3*state[col] + 1*state[col+4] + 1*state[col+8]
 
-		state[col] = y0 % t
-		state[col+4] = y1 % t
-		state[col+8] = y2 % t
-		state[col+12] = y3 % t
+		state[col] = y0 % plainModulus
+		state[col+4] = y1 % plainModulus
+		state[col+8] = y2 % plainModulus
+		state[col+12] = y3 % plainModulus
 	}
 
 	for row := 0; row < 4; row++ {
@@ -266,19 +266,19 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[4*row+2] + 3*state[4*row+3] + 1*state[4*row] + 1*state[4*row+1]
 		y3 := 2*state[4*row+3] + 3*state[4*row] + 1*state[4*row+1] + 1*state[4*row+2]
 
-		state[4*row] = y0 % t
-		state[4*row+1] = y1 % t
-		state[4*row+2] = y2 % t
-		state[4*row+3] = y3 % t
+		state[4*row] = y0 % plainModulus
+		state[4*row+1] = y1 % plainModulus
+		state[4*row+2] = y2 % plainModulus
+		state[4*row+3] = y3 % plainModulus
 	}
 
 	for st := 0; st < 16; st++ {
-		state[st] = (state[st] + rks[roundNum][st]) % t
+		state[st] = (state[st] + rks[roundNum][st]) % plainModulus
 	}
 	return
 }
 
-func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key []uint64, t uint64) (state []uint64) {
+func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key []uint64, plainModulus uint64) (state []uint64) {
 	xof := sha3.NewShake256()
 	xof.Write(nonce)
 	xof.Write(counter)
@@ -289,7 +289,7 @@ func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key 
 	for r := 0; r <= numRound; r++ {
 		rks[r] = make([]uint64, blocksize)
 		for i := 0; i < blocksize; i++ {
-			rks[r][i] = ckks_fv.SampleZtx(xof, t) * key[i] % t
+			rks[r][i] = ckks_fv.SampleZqx(xof, plainModulus) * key[i] % plainModulus
 			// rks[r][i] = uint64(i+1) * key[i] % t
 		}
 	}
@@ -300,31 +300,31 @@ func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key 
 
 	// Initial AddRoundKey
 	for i := 0; i < blocksize; i++ {
-		state[i] = (state[i] + rks[0][i]) % t
+		state[i] = (state[i] + rks[0][i]) % plainModulus
 	}
 
 	// Round Functions
 	for r := 1; r < numRound; r++ {
-		rubatoLinearLayer(state, t)
-		rubatoFeistel(state, t)
+		rubatoLinearLayer(state, plainModulus)
+		rubatoFeistel(state, plainModulus)
 		for i := 0; i < blocksize; i++ {
-			state[i] = (state[i] + rks[r][i]) % t
+			state[i] = (state[i] + rks[r][i]) % plainModulus
 		}
 	}
 
 	// Finalization
-	rubatoLinearLayer(state, t)
-	rubatoFeistel(state, t)
-	rubatoLinearLayer(state, t)
+	rubatoLinearLayer(state, plainModulus)
+	rubatoFeistel(state, plainModulus)
+	rubatoLinearLayer(state, plainModulus)
 	for i := 0; i < blocksize; i++ {
-		state[i] = (state[i] + rks[numRound][i]) % t
+		state[i] = (state[i] + rks[numRound][i]) % plainModulus
 	}
 	state = state[0 : blocksize-4]
 
 	return
 }
 
-func rubatoLinearLayer(state []uint64, t uint64) {
+func rubatoLinearLayer(state []uint64, plainModulus uint64) {
 	blocksize := len(state)
 	buf := make([]uint64, blocksize)
 
@@ -336,7 +336,7 @@ func rubatoLinearLayer(state []uint64, t uint64) {
 				buf[row*4+col] += 3 * state[((row+1)%4)*4+col]
 				buf[row*4+col] += state[((row+2)%4)*4+col]
 				buf[row*4+col] += state[((row+3)%4)*4+col]
-				buf[row*4+col] %= t
+				buf[row*4+col] %= plainModulus
 			}
 		}
 		// MixRows
@@ -346,7 +346,7 @@ func rubatoLinearLayer(state []uint64, t uint64) {
 				state[row*4+col] += 3 * buf[row*4+(col+1)%4]
 				state[row*4+col] += buf[row*4+(col+2)%4]
 				state[row*4+col] += buf[row*4+(col+3)%4]
-				state[row*4+col] %= t
+				state[row*4+col] %= plainModulus
 			}
 		}
 	} else if blocksize == 36 {
@@ -359,7 +359,7 @@ func rubatoLinearLayer(state []uint64, t uint64) {
 				buf[row*6+col] += 3 * state[((row+3)%6)*6+col]
 				buf[row*6+col] += state[((row+4)%6)*6+col]
 				buf[row*6+col] += state[((row+5)%6)*6+col]
-				buf[row*6+col] %= t
+				buf[row*6+col] %= plainModulus
 			}
 		}
 		// MixRows
@@ -371,7 +371,7 @@ func rubatoLinearLayer(state []uint64, t uint64) {
 				state[row*6+col] += 3 * buf[row*6+(col+3)%6]
 				state[row*6+col] += buf[row*6+(col+4)%6]
 				state[row*6+col] += buf[row*6+(col+5)%6]
-				state[row*6+col] %= t
+				state[row*6+col] %= plainModulus
 			}
 		}
 	} else if blocksize == 64 {
@@ -386,7 +386,7 @@ func rubatoLinearLayer(state []uint64, t uint64) {
 				buf[row*8+col] += 2 * state[((row+5)%8)*8+col]
 				buf[row*8+col] += state[((row+6)%8)*8+col]
 				buf[row*8+col] += state[((row+7)%8)*8+col]
-				buf[row*8+col] %= t
+				buf[row*8+col] %= plainModulus
 			}
 		}
 		// MixRows
@@ -400,7 +400,7 @@ func rubatoLinearLayer(state []uint64, t uint64) {
 				state[row*8+col] += 2 * buf[row*8+(col+5)%8]
 				state[row*8+col] += buf[row*8+(col+6)%8]
 				state[row*8+col] += buf[row*8+(col+7)%8]
-				state[row*8+col] %= t
+				state[row*8+col] %= plainModulus
 			}
 		}
 	} else {
@@ -408,7 +408,7 @@ func rubatoLinearLayer(state []uint64, t uint64) {
 	}
 }
 
-func rubatoFeistel(state []uint64, t uint64) {
+func rubatoFeistel(state []uint64, plainModulus uint64) {
 	blocksize := len(state)
 	buf := make([]uint64, blocksize)
 
@@ -417,7 +417,7 @@ func rubatoFeistel(state []uint64, t uint64) {
 	}
 
 	for i := 1; i < blocksize; i++ {
-		state[i] = (buf[i] + buf[i-1]*buf[i-1]) % t
+		state[i] = (buf[i] + buf[i-1]*buf[i-1]) % plainModulus
 	}
 }
 
@@ -458,8 +458,7 @@ func testFVRubato(blocksize int, numRound int) {
 	var keystream [][]uint64
 	var keystreamCt []*ckks_fv.Ciphertext
 
-	params := ckks_fv.DefaultFVParams[3]
-	params.SetT(0x1ffc0001)
+	params := ckks_fv.DefaultFVParams[3].WithPlainModulus(0x1ffc0001)
 
 	// Scheme context and keys
 	fmt.Println("Key generation...")
@@ -492,7 +491,7 @@ func testFVRubato(blocksize int, numRound int) {
 	fmt.Println("Computing plain keystream...")
 	keystream = make([][]uint64, params.FVSlots())
 	for i := 0; i < params.FVSlots(); i++ {
-		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.T())
+		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
 	}
 
 	// Evaluate the Rubato keystream
@@ -510,7 +509,7 @@ func testFVRubato(blocksize int, numRound int) {
 }
 
 func main() {
-	// findModDown(4, 0, 2, false)
+	findHeraModDown(4, 0, 2, false)
 	// testPlainRubato()
-	testFVRubato(64, 10)
+	// testFVRubato(64, 10)
 }

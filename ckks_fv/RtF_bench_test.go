@@ -84,7 +84,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 	if err != nil {
 		panic(err)
 	}
-	messageScaling := float64(params.T()) / (2 * hbtpParams.MessageRatio)
+	messageScaling := float64(params.PlainModulus()) / (2 * hbtpParams.MessageRatio)
 
 	// HERA parameters in RtF
 	var heraModDown, stcModDown []int
@@ -158,7 +158,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 
 		keystream = make([][]uint64, params.N())
 		for i := 0; i < params.N(); i++ {
-			keystream[i] = plainHera(numRound, nonces[i], key, params.T())
+			keystream[i] = plainHera(numRound, nonces[i], key, params.PlainModulus())
 		}
 
 		for s := 0; s < 16; s++ {
@@ -175,7 +175,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 			poly := plainCKKSRingTs[s].Value()[0]
 			for i := 0; i < params.N(); i++ {
 				j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
-				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.T()
+				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.PlainModulus()
 			}
 		}
 	} else {
@@ -195,7 +195,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 
 		keystream = make([][]uint64, params.Slots())
 		for i := 0; i < params.Slots(); i++ {
-			keystream[i] = plainHera(numRound, nonces[i], key, params.T())
+			keystream[i] = plainHera(numRound, nonces[i], key, params.PlainModulus())
 		}
 
 		for s := 0; s < 16; s++ {
@@ -212,7 +212,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 			poly := plainCKKSRingTs[s].Value()[0]
 			for i := 0; i < params.Slots(); i++ {
 				j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
-				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.T()
+				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.PlainModulus()
 			}
 		}
 
@@ -254,7 +254,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 		ciphertext.Value()[0] = plaintexts[0].Value()[0].CopyNew()
 		fvEvaluator.Sub(ciphertext, fvKeystreams[0], ciphertext)
 		fvEvaluator.TransformToNTT(ciphertext, ciphertext)
-		ciphertext.SetScale(float64(params.Qi()[0]) / float64(params.T()) * messageScaling)
+		ciphertext.SetScale(float64(params.Qi()[0]) / float64(params.PlainModulus()) * messageScaling)
 
 		// Half-Bootstrap the ciphertext (homomorphic evaluation of ModRaise -> SubSum -> CtS -> EvalMod)
 		// It takes a ciphertext at level 0 (if not at level 0, then it will reduce it to level 0)
@@ -293,7 +293,7 @@ func printDebug(params *Parameters, ciphertext *Ciphertext, valuesWant []complex
 	fmt.Println(precStats.String())
 }
 
-func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint64) {
+func plainHera(roundNum int, nonce []byte, key []uint64, plainModulus uint64) (state []uint64) {
 	nr := roundNum
 	xof := sha3.NewShake256()
 	xof.Write(nonce)
@@ -304,7 +304,7 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 	for r := 0; r <= nr; r++ {
 		rks[r] = make([]uint64, 16)
 		for st := 0; st < 16; st++ {
-			rks[r][st] = SampleZtx(xof, t) * key[st] % t
+			rks[r][st] = SampleZqx(xof, plainModulus) * key[st] % plainModulus
 		}
 	}
 
@@ -314,7 +314,7 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 
 	// round0
 	for st := 0; st < 16; st++ {
-		state[st] = (state[st] + rks[0][st]) % t
+		state[st] = (state[st] + rks[0][st]) % plainModulus
 	}
 
 	for r := 1; r < roundNum; r++ {
@@ -324,10 +324,10 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 			y2 := 2*state[col+8] + 3*state[col+12] + 1*state[col] + 1*state[col+4]
 			y3 := 2*state[col+12] + 3*state[col] + 1*state[col+4] + 1*state[col+8]
 
-			state[col] = y0 % t
-			state[col+4] = y1 % t
-			state[col+8] = y2 % t
-			state[col+12] = y3 % t
+			state[col] = y0 % plainModulus
+			state[col+4] = y1 % plainModulus
+			state[col+8] = y2 % plainModulus
+			state[col+12] = y3 % plainModulus
 		}
 
 		for row := 0; row < 4; row++ {
@@ -336,18 +336,18 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 			y2 := 2*state[4*row+2] + 3*state[4*row+3] + 1*state[4*row] + 1*state[4*row+1]
 			y3 := 2*state[4*row+3] + 3*state[4*row] + 1*state[4*row+1] + 1*state[4*row+2]
 
-			state[4*row] = y0 % t
-			state[4*row+1] = y1 % t
-			state[4*row+2] = y2 % t
-			state[4*row+3] = y3 % t
+			state[4*row] = y0 % plainModulus
+			state[4*row+1] = y1 % plainModulus
+			state[4*row+2] = y2 % plainModulus
+			state[4*row+3] = y3 % plainModulus
 		}
 
 		for st := 0; st < 16; st++ {
-			state[st] = (state[st] * state[st] % t) * state[st] % t
+			state[st] = (state[st] * state[st] % plainModulus) * state[st] % plainModulus
 		}
 
 		for st := 0; st < 16; st++ {
-			state[st] = (state[st] + rks[r][st]) % t
+			state[st] = (state[st] + rks[r][st]) % plainModulus
 		}
 	}
 	for col := 0; col < 4; col++ {
@@ -356,10 +356,10 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[col+8] + 3*state[col+12] + 1*state[col] + 1*state[col+4]
 		y3 := 2*state[col+12] + 3*state[col] + 1*state[col+4] + 1*state[col+8]
 
-		state[col] = y0 % t
-		state[col+4] = y1 % t
-		state[col+8] = y2 % t
-		state[col+12] = y3 % t
+		state[col] = y0 % plainModulus
+		state[col+4] = y1 % plainModulus
+		state[col+8] = y2 % plainModulus
+		state[col+12] = y3 % plainModulus
 	}
 
 	for row := 0; row < 4; row++ {
@@ -368,14 +368,14 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[4*row+2] + 3*state[4*row+3] + 1*state[4*row] + 1*state[4*row+1]
 		y3 := 2*state[4*row+3] + 3*state[4*row] + 1*state[4*row+1] + 1*state[4*row+2]
 
-		state[4*row] = y0 % t
-		state[4*row+1] = y1 % t
-		state[4*row+2] = y2 % t
-		state[4*row+3] = y3 % t
+		state[4*row] = y0 % plainModulus
+		state[4*row+1] = y1 % plainModulus
+		state[4*row+2] = y2 % plainModulus
+		state[4*row+3] = y3 % plainModulus
 	}
 
 	for st := 0; st < 16; st++ {
-		state[st] = (state[st] * state[st] % t) * state[st] % t
+		state[st] = (state[st] * state[st] % plainModulus) * state[st] % plainModulus
 	}
 
 	for col := 0; col < 4; col++ {
@@ -384,10 +384,10 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[col+8] + 3*state[col+12] + 1*state[col] + 1*state[col+4]
 		y3 := 2*state[col+12] + 3*state[col] + 1*state[col+4] + 1*state[col+8]
 
-		state[col] = y0 % t
-		state[col+4] = y1 % t
-		state[col+8] = y2 % t
-		state[col+12] = y3 % t
+		state[col] = y0 % plainModulus
+		state[col+4] = y1 % plainModulus
+		state[col+8] = y2 % plainModulus
+		state[col+12] = y3 % plainModulus
 	}
 
 	for row := 0; row < 4; row++ {
@@ -396,14 +396,14 @@ func plainHera(roundNum int, nonce []byte, key []uint64, t uint64) (state []uint
 		y2 := 2*state[4*row+2] + 3*state[4*row+3] + 1*state[4*row] + 1*state[4*row+1]
 		y3 := 2*state[4*row+3] + 3*state[4*row] + 1*state[4*row+1] + 1*state[4*row+2]
 
-		state[4*row] = y0 % t
-		state[4*row+1] = y1 % t
-		state[4*row+2] = y2 % t
-		state[4*row+3] = y3 % t
+		state[4*row] = y0 % plainModulus
+		state[4*row+1] = y1 % plainModulus
+		state[4*row+2] = y2 % plainModulus
+		state[4*row+3] = y3 % plainModulus
 	}
 
 	for st := 0; st < 16; st++ {
-		state[st] = (state[st] + rks[roundNum][st]) % t
+		state[st] = (state[st] + rks[roundNum][st]) % plainModulus
 	}
 	return
 }

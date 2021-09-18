@@ -110,7 +110,7 @@ func (rubato *mfvRubato) init(nonce [][]byte, counter []byte) {
 	for r := 0; r <= rubato.numRound; r++ {
 		for i := 0; i < rubato.blocksize; i++ {
 			for slot := 0; slot < slots; slot++ {
-				rubato.rc[r][i][slot] = SampleZtx(rubato.xof[slot], rubato.params.T())
+				rubato.rc[r][i][slot] = SampleZqx(rubato.xof[slot], rubato.params.PlainModulus())
 			}
 		}
 	}
@@ -124,12 +124,12 @@ func (rubato *mfvRubato) init(nonce [][]byte, counter []byte) {
 }
 
 func (rubato *mfvRubato) findBudgetInfo(noiseEstimator MFVNoiseEstimator) (maxInvBudget, minErrorBits int) {
-	T := ring.NewUint(rubato.params.T())
+	plainModulus := ring.NewUint(rubato.params.PlainModulus())
 	maxInvBudget = 0
 	minErrorBits = 0
 	for i := 0; i < rubato.blocksize; i++ {
 		invBudget := noiseEstimator.InvariantNoiseBudget(rubato.stCt[i])
-		errorBits := rubato.params.LogQLvl(rubato.stCt[i].Level()) - T.BitLen() - invBudget
+		errorBits := rubato.params.LogQLvl(rubato.stCt[i].Level()) - plainModulus.BitLen() - invBudget
 
 		if invBudget > maxInvBudget {
 			maxInvBudget = invBudget

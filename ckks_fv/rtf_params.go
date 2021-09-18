@@ -40,11 +40,11 @@ var RtFParams = []*HalfBootParameters{
 	// 128f
 	// Use full coefficients for data encoding
 	{
-		LogN:     16,
-		LogSlots: 15,
-		Scale:    1 << 40,
-		t:        268042241, // 28-bit
-		Sigma:    DefaultSigma,
+		LogN:         16,
+		LogSlots:     15,
+		Scale:        1 << 40,
+		PlainModulus: 268042241, // 28-bit
+		Sigma:        DefaultSigma,
 		ResidualModuli: []uint64{
 			0x10000000006e0001, // 60 Q0
 			0x10000140001,      // 40
@@ -109,11 +109,11 @@ var RtFParams = []*HalfBootParameters{
 	// 128s
 	// Use only 4 slots for data encoding
 	{
-		LogN:     16,
-		LogSlots: 4,
-		Scale:    1 << 40,
-		t:        268042241, // 28-bit
-		Sigma:    DefaultSigma,
+		LogN:         16,
+		LogSlots:     4,
+		Scale:        1 << 40,
+		PlainModulus: 268042241, // 28-bit
+		Sigma:        DefaultSigma,
 		ResidualModuli: []uint64{
 			0x10000000006e0001, // 60 Q0
 			0x10000140001,      // 40
@@ -179,11 +179,11 @@ var RtFParams = []*HalfBootParameters{
 	// Use full coefficients for data encoding
 	// with arcsine evaluation
 	{
-		LogN:     16,
-		LogSlots: 15,
-		t:        268042241, // 28-bit
-		Scale:    1 << 45,
-		Sigma:    DefaultSigma,
+		LogN:         16,
+		LogSlots:     15,
+		PlainModulus: 268042241, // 28-bit
+		Scale:        1 << 45,
+		Sigma:        DefaultSigma,
 		ResidualModuli: []uint64{
 			0x10000000006e0001, // 60 Q0
 			0x2000000a0001,     // 45
@@ -247,11 +247,11 @@ var RtFParams = []*HalfBootParameters{
 	// Use only 4 slots for data encoding
 	// with arcsine evaluation
 	{
-		LogN:     16,
-		LogSlots: 4,
-		t:        268042241, // 28-bit
-		Scale:    1 << 45,
-		Sigma:    DefaultSigma,
+		LogN:         16,
+		LogSlots:     4,
+		PlainModulus: 268042241, // 28-bit
+		Scale:        1 << 45,
+		Sigma:        DefaultSigma,
 		ResidualModuli: []uint64{
 			0x10000000006e0001, // 60 Q0
 			0x2000000a0001,     // 45

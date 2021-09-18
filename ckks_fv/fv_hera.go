@@ -107,7 +107,7 @@ func (hera *mfvHera) init(nonce [][]byte) {
 	for r := 0; r <= hera.numRound; r++ {
 		for st := 0; st < 16; st++ {
 			for slot := 0; slot < slots; slot++ {
-				hera.rc[r][st][slot] = SampleZtx(hera.xof[slot], hera.params.T())
+				hera.rc[r][st][slot] = SampleZqx(hera.xof[slot], hera.params.PlainModulus())
 			}
 		}
 	}
@@ -121,12 +121,12 @@ func (hera *mfvHera) init(nonce [][]byte) {
 }
 
 func (hera *mfvHera) findBudgetInfo(noiseEstimator MFVNoiseEstimator) (maxInvBudget, minErrorBits int) {
-	T := ring.NewUint(hera.params.T())
+	plainModulus := ring.NewUint(hera.params.PlainModulus())
 	maxInvBudget = 0
 	minErrorBits = 0
 	for i := 0; i < 16; i++ {
 		invBudget := noiseEstimator.InvariantNoiseBudget(hera.stCt[i])
-		errorBits := hera.params.LogQLvl(hera.stCt[i].Level()) - T.BitLen() - invBudget
+		errorBits := hera.params.LogQLvl(hera.stCt[i].Level()) - plainModulus.BitLen() - invBudget
 
 		if invBudget > maxInvBudget {
 			maxInvBudget = invBudget

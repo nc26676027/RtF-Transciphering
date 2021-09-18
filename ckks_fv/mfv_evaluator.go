@@ -83,8 +83,8 @@ type mfvEvaluatorBase struct {
 
 	decomposer *ring.Decomposer
 
-	t     uint64
-	pHalf *big.Int
+	plainModulus uint64
+	pHalf        *big.Int
 
 	deltasMont [][]uint64
 }
@@ -95,7 +95,7 @@ func newMFVEvaluatorPrecomp(params *Parameters) *mfvEvaluatorBase {
 
 	ev.params = params.Copy()
 
-	ev.t = params.t
+	ev.plainModulus = params.plainModulus
 
 	if ev.ringQ, err = ring.NewRing(params.N(), params.qi); err != nil {
 		panic(err)
@@ -126,7 +126,7 @@ func newMFVEvaluatorPrecomp(params *Parameters) *mfvEvaluatorBase {
 	ev.pHalf = new(big.Int).Rsh(ev.ringQMul.ModulusBigint, 1)
 	ev.deltasMont = make([][]uint64, modCount)
 	for i := 0; i < modCount; i++ {
-		ev.deltasMont[i] = GenLiftParams(ev.ringQs[i], params.t)
+		ev.deltasMont[i] = GenLiftParams(ev.ringQs[i], params.plainModulus)
 	}
 
 	if len(params.pi) != 0 {
@@ -626,7 +626,7 @@ func (eval *mfvEvaluator) quantize(ctOut *Element) {
 		eval.ringQ.SubScalarBigintLvl(level, ctOut.value[i], eval.pHalf, ctOut.value[i])
 
 		// Option (2) (ct(x)/Q)*T, doing so only requires that Q*P > Q*Q, faster but adds error ~|T|
-		eval.ringQ.MulScalarLvl(level, ctOut.value[i], eval.t, ctOut.value[i])
+		eval.ringQ.MulScalarLvl(level, ctOut.value[i], eval.plainModulus, ctOut.value[i])
 	}
 }
 
@@ -1428,9 +1428,9 @@ func (eval *mfvEvaluator) SlotsToCoeffsNoModSwitch(ct *Ciphertext) (ctOut *Ciphe
 }
 
 func (eval *mfvEvaluator) findBudgetInfo(ct *Ciphertext, noiseEstimator MFVNoiseEstimator) (invBudget, errorBits int) {
-	T := ring.NewUint(eval.params.T())
+	plainModulus := ring.NewUint(eval.params.PlainModulus())
 	invBudget = noiseEstimator.InvariantNoiseBudget(ct)
-	errorBits = eval.params.LogQLvl(ct.Level()) - T.BitLen() - invBudget
+	errorBits = eval.params.LogQLvl(ct.Level()) - plainModulus.BitLen() - invBudget
 	return
 }
 
