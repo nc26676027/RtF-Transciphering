@@ -449,16 +449,22 @@ func testFVRubato(blocksize int, numRound int) {
 	var fvEncryptor ckks_fv.MFVEncryptor
 	var fvDecryptor ckks_fv.MFVDecryptor
 	var fvEvaluator ckks_fv.MFVEvaluator
-	// var fvNoiseEstimator ckks_fv.MFVNoiseEstimator
+	var fvNoiseEstimator ckks_fv.MFVNoiseEstimator
 	var rubato ckks_fv.MFVRubato
 
 	var nonces [][]byte
 	var key []uint64
-	// var stCt []*ckks_fv.Ciphertext
 	var keystream [][]uint64
 	var keystreamCt []*ckks_fv.Ciphertext
 
-	params := ckks_fv.DefaultFVParams[3].WithPlainModulus(0x1ffc0001)
+	// params := ckks_fv.DefaultFVParams[3].WithPlainModulus(0x1ffc0001)
+	hbtpParams := ckks_fv.RtFParams[0]
+	params, err := hbtpParams.Params()
+	if err != nil {
+		panic(err)
+	}
+	params.SetPlainModulus(0x1ffc0001)
+	params.SetLogFVSlots(params.LogN())
 
 	// Scheme context and keys
 	fmt.Println("Key generation...")
@@ -469,7 +475,7 @@ func testFVRubato(blocksize int, numRound int) {
 	fvEncoder = ckks_fv.NewMFVEncoder(params)
 	fvEncryptor = ckks_fv.NewMFVEncryptorFromPk(params, pk)
 	fvDecryptor = ckks_fv.NewMFVDecryptor(params, sk)
-	// fvNoiseEstimator = ckks_fv.NewMFVNoiseEstimator(params, sk)
+	fvNoiseEstimator = ckks_fv.NewMFVNoiseEstimator(params, sk)
 
 	rlk := kgen.GenRelinearizationKey(sk)
 	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk}, nil)
@@ -498,7 +504,11 @@ func testFVRubato(blocksize int, numRound int) {
 	fmt.Println("Evaluating HE keystream...")
 	rubato = ckks_fv.NewMFVRubato(blocksize, numRound, params, fvEncoder, fvEncryptor, fvEvaluator, 0)
 	hekey := rubato.EncKey(key)
+	budget := fvNoiseEstimator.InvariantNoiseBudget(hekey[0])
+	fmt.Printf("Initial noise budget: %d\n", budget)
 	keystreamCt = rubato.CryptNoModSwitch(nonces, counter, hekey)
+	budget = fvNoiseEstimator.InvariantNoiseBudget(keystreamCt[0])
+	fmt.Printf("Output noise budget: %d\n", budget)
 
 	// Decrypt and decode the Rubato keystream
 	for i := 0; i < blocksize-4; i++ {
@@ -508,8 +518,255 @@ func testFVRubato(blocksize int, numRound int) {
 	}
 }
 
+func testRtFRubatoModDown(blocksize int, numRound int, paramIndex int, radix int, fullCoeffs bool) {
+	var err error
+
+	var hbtp *ckks_fv.HalfBootstrapper
+	var kgen ckks_fv.KeyGenerator
+	var fvEncoder ckks_fv.MFVEncoder
+	var ckksEncoder ckks_fv.CKKSEncoder
+	var ckksDecryptor ckks_fv.CKKSDecryptor
+	var sk *ckks_fv.SecretKey
+	var pk *ckks_fv.PublicKey
+	var fvEncryptor ckks_fv.MFVEncryptor
+	var fvEvaluator ckks_fv.MFVEvaluator
+	var plainCKKSRingTs []*ckks_fv.PlaintextRingT
+	var plaintexts []*ckks_fv.Plaintext
+	var rubato ckks_fv.MFVRubato
+
+	var data [][]float64
+	var nonces [][]byte
+	var counter []byte
+	var key []uint64
+	var keystream [][]uint64
+	var fvKeystreams []*ckks_fv.Ciphertext
+
+	var rubatoModDown []int
+	var stcModDown []int
+
+	// RtF parameters
+	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
+	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
+	// LogSlots is hardcoded in the parameters, but can be changed from 4 to 15.
+	// When changing logSlots make sure that the number of levels allocated to CtS is
+	// smaller or equal to logSlots.
+
+	hbtpParams := ckks_fv.RtFParams[paramIndex]
+	params, err := hbtpParams.Params()
+	if err != nil {
+		panic(err)
+	}
+	messageScaling := float64(params.PlainModulus()) / (2 * hbtpParams.MessageRatio)
+
+	// Rubato parameters in RtF
+	rubatoModDown = make([]int, numRound)
+	stcModDown = make([]int, 30)
+
+	// fullCoeffs denotes whether full coefficients are used for data encoding
+	if fullCoeffs {
+		params.SetLogFVSlots(params.LogN())
+	} else {
+		params.SetLogFVSlots(params.LogSlots())
+	}
+
+	// Scheme context and keys
+	kgen = ckks_fv.NewKeyGenerator(params)
+
+	sk, pk = kgen.GenKeyPairSparse(hbtpParams.H)
+
+	fvEncoder = ckks_fv.NewMFVEncoder(params)
+	ckksEncoder = ckks_fv.NewCKKSEncoder(params)
+	fvEncryptor = ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	ckksDecryptor = ckks_fv.NewCKKSDecryptor(params, sk)
+
+	// Generating half-bootstrapping keys
+	rotationsHalfBoot := kgen.GenRotationIndexesForHalfBoot(params.LogSlots(), hbtpParams)
+	pDcds := fvEncoder.GenSlotToCoeffMatFV(radix)
+	rotationsStC := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
+	rotations := append(rotationsHalfBoot, rotationsStC...)
+	if !fullCoeffs {
+		rotations = append(rotations, params.Slots()/2)
+	}
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	rlk := kgen.GenRelinearizationKey(sk)
+	hbtpKey := ckks_fv.BootstrappingKey{Rlk: rlk, Rtks: rotkeys}
+
+	if hbtp, err = ckks_fv.NewHalfBootstrapper(params, hbtpParams, hbtpKey); err != nil {
+		panic(err)
+	}
+
+	// Encode float data added by keystream to plaintext coefficients
+	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
+	outputsize := blocksize - 4
+	coeffs := make([][]float64, outputsize)
+	for s := 0; s < outputsize; s++ {
+		coeffs[s] = make([]float64, params.N())
+	}
+
+	key = make([]uint64, blocksize)
+	for i := 0; i < blocksize; i++ {
+		key[i] = uint64(i + 1)
+	}
+
+	if fullCoeffs {
+		data = make([][]float64, outputsize)
+		for s := 0; s < outputsize; s++ {
+			data[s] = make([]float64, params.N())
+			for i := 0; i < params.N(); i++ {
+				data[s][i] = utils.RandFloat64(-1, 1)
+			}
+		}
+
+		nonces = make([][]byte, params.N())
+		for i := 0; i < params.N(); i++ {
+			nonces[i] = make([]byte, 64)
+			rand.Read(nonces[i])
+		}
+		counter = make([]byte, 64)
+		rand.Read(counter)
+
+		keystream = make([][]uint64, params.N())
+		for i := 0; i < params.N(); i++ {
+			keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
+		}
+
+		for s := 0; s < outputsize; s++ {
+			for i := 0; i < params.N()/2; i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+				coeffs[s][j] = data[s][i]
+				coeffs[s][j+uint64(params.N()/2)] = data[s][i+params.N()/2]
+			}
+		}
+
+		plainCKKSRingTs = make([]*ckks_fv.PlaintextRingT, blocksize)
+		for s := 0; s < outputsize; s++ {
+			plainCKKSRingTs[s] = ckksEncoder.EncodeCoeffsRingTNew(coeffs[s], messageScaling)
+			poly := plainCKKSRingTs[s].Value()[0]
+			for i := 0; i < params.N(); i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
+				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.PlainModulus()
+			}
+		}
+	} else {
+		data = make([][]float64, outputsize)
+		for s := 0; s < outputsize; s++ {
+			data[s] = make([]float64, params.Slots())
+			for i := 0; i < params.Slots(); i++ {
+				data[s][i] = utils.RandFloat64(-1, 1)
+			}
+		}
+
+		nonces = make([][]byte, params.Slots())
+		for i := 0; i < params.Slots(); i++ {
+			nonces[i] = make([]byte, 64)
+			rand.Read(nonces[i])
+		}
+		counter = make([]byte, 64)
+		rand.Read(counter)
+
+		keystream = make([][]uint64, params.Slots())
+		for i := 0; i < params.Slots(); i++ {
+			keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
+		}
+
+		for s := 0; s < outputsize; s++ {
+			for i := 0; i < params.Slots()/2; i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()-1))
+				coeffs[s][j] = data[s][i]
+				coeffs[s][j+uint64(params.N()/2)] = data[s][i+params.Slots()/2]
+			}
+		}
+
+		plainCKKSRingTs = make([]*ckks_fv.PlaintextRingT, outputsize)
+		for s := 0; s < outputsize; s++ {
+			plainCKKSRingTs[s] = ckksEncoder.EncodeCoeffsRingTNew(coeffs[s], messageScaling)
+			poly := plainCKKSRingTs[s].Value()[0]
+			for i := 0; i < params.Slots(); i++ {
+				j := utils.BitReverse64(uint64(i), uint64(params.LogN()))
+				poly.Coeffs[0][j] = (poly.Coeffs[0][j] + keystream[i][s]) % params.PlainModulus()
+			}
+		}
+	}
+
+	plaintexts = make([]*ckks_fv.Plaintext, outputsize)
+
+	for s := 0; s < outputsize; s++ {
+		plaintexts[s] = ckks_fv.NewPlaintextFVLvl(params, 0)
+		fvEncoder.FVScaleUp(plainCKKSRingTs[s], plaintexts[s])
+	}
+
+	rubato = ckks_fv.NewMFVRubato(blocksize, numRound, params, fvEncoder, fvEncryptor, fvEvaluator, rubatoModDown[0])
+	kCt := rubato.EncKey(key)
+
+	// FV Keystream
+	fvKeystreams = rubato.CryptNoModSwitch(nonces, counter, kCt)
+	for i := 0; i < outputsize; i++ {
+		fvKeystreams[i] = fvEvaluator.SlotsToCoeffs(fvKeystreams[i], stcModDown)
+		fvEvaluator.ModSwitchMany(fvKeystreams[i], fvKeystreams[i], fvKeystreams[i].Level())
+	}
+
+	var ctBoot *ckks_fv.Ciphertext
+	for s := 0; s < outputsize; s++ {
+		// Encrypt and mod switch to the lowest level
+		ciphertext := ckks_fv.NewCiphertextFVLvl(params, 1, 0)
+		ciphertext.Value()[0] = plaintexts[s].Value()[0].CopyNew()
+		fvEvaluator.Sub(ciphertext, fvKeystreams[s], ciphertext)
+		fvEvaluator.TransformToNTT(ciphertext, ciphertext)
+		ciphertext.SetScale(float64(params.Qi()[0]) / float64(params.PlainModulus()) * messageScaling)
+
+		// Half-Bootstrap the ciphertext (homomorphic evaluation of ModRaise -> SubSum -> CtS -> EvalMod)
+		// It takes a ciphertext at level 0 (if not at level 0, then it will reduce it to level 0)
+		// and returns a ciphertext at level MaxLevel - k, where k is the depth of the bootstrapping circuit.
+		// Difference from the bootstrapping is that the last StC is missing.
+		// CAUTION: the scale of the ciphertext MUST be equal (or very close) to params.Scale
+		// To equalize the scale, the function evaluator.SetScale(ciphertext, parameters.Scale) can be used at the expense of one level.
+		if fullCoeffs {
+			ctBoot, _ = hbtp.HalfBoot(ciphertext, false)
+		} else {
+			ctBoot, _ = hbtp.HalfBoot(ciphertext, true)
+		}
+
+		valuesWant := make([]complex128, params.Slots())
+		for i := 0; i < params.Slots(); i++ {
+			valuesWant[i] = complex(data[s][i], 0)
+		}
+
+		printString := fmt.Sprintf("Precision of HalfBoot(ciphertext[%d])", s)
+		fmt.Println(printString)
+		printDebug(params, ctBoot, valuesWant, ckksDecryptor, ckksEncoder)
+	}
+}
+
+func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valuesWant []complex128, decryptor ckks_fv.CKKSDecryptor, encoder ckks_fv.CKKSEncoder) {
+
+	valuesTest := encoder.DecodeComplex(decryptor.DecryptNew(ciphertext), params.LogSlots())
+	logSlots := params.LogSlots()
+	sigma := params.Sigma()
+
+	fmt.Printf("Level: %d (logQ = %d)\n", ciphertext.Level(), params.LogQLvl(ciphertext.Level()))
+	fmt.Printf("Scale: 2^%f\n", math.Log2(ciphertext.Scale()))
+	fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f...\n", valuesTest[0], valuesTest[1], valuesTest[2], valuesTest[3])
+	fmt.Printf("ValuesWant: %6.10f %6.10f %6.10f %6.10f...\n", valuesWant[0], valuesWant[1], valuesWant[2], valuesWant[3])
+
+	precStats := ckks_fv.GetPrecisionStats(params, encoder, nil, valuesWant, valuesTest, logSlots, sigma)
+
+	fmt.Println(precStats.String())
+}
+
 func main() {
-	findHeraModDown(4, 0, 2, false)
+	// findHeraModDown(4, 0, 2, false)
 	// testPlainRubato()
-	// testFVRubato(64, 10)
+	// testFVRubato(64, 2)
+	testRtFRubatoModDown(16, 5, 0, 1, true) // 128f
+	// testRtFRubatoModDown(16, 5, 1, 1, false) // 128s
+	// testRtFRubatoModDown(16, 5, 2, 1, true) // 128af
+	// testRtFRubatoModDown(16, 5, 3, 1, false) // 128as
+	// testRtFRubatoModDown(36, 2, 0, 1, true)  // 128f
+	// testRtFRubatoModDown(36, 2, 1, 1, false) // 128s
+	// testRtFRubatoModDown(36, 2, 2, 1, true)  // 128af
+	// testRtFRubatoModDown(36, 2, 3, 1, false) // 128as
+	// testRtFRubatoModDown(64, 2, 0, 1, true)  // 128f
+	// testRtFRubatoModDown(64, 2, 1, 1, false) // 128s
+	// testRtFRubatoModDown(64, 2, 2, 1, true)  // 128af
+	// testRtFRubatoModDown(64, 2, 3, 1, false) // 128as
 }
