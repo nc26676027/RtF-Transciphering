@@ -8,9 +8,9 @@ import (
 )
 
 type MFVRubato interface {
-	// Crypt(nonce [][]byte, counter []byte, kCt []*Ciphertext, rubatoModDown []int) []*Ciphertext
+	Crypt(nonce [][]byte, counter []byte, kCt []*Ciphertext, rubatoModDown []int) []*Ciphertext
 	CryptNoModSwitch(nonce [][]byte, counter []byte, kCt []*Ciphertext) []*Ciphertext
-	// CryptAutoModSwitch(nonce [][]byte, counter []byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) (res []*Ciphertext, rubatoModDown []int)
+	CryptAutoModSwitch(nonce [][]byte, counter []byte, kCt []*Ciphertext, noiseEstimator MFVNoiseEstimator) (res []*Ciphertext, rubatoModDown []int)
 	Reset(nbInitModDown int)
 	EncKey(key []uint64) (res []*Ciphertext)
 }

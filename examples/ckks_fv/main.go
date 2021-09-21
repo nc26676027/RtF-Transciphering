@@ -753,20 +753,164 @@ func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valu
 	fmt.Println(precStats.String())
 }
 
+func findRubatoModDown(blocksize int, numRound int, paramIndex int, radix int, fullCoeffs bool) {
+	var err error
+
+	var kgen ckks_fv.KeyGenerator
+	var fvEncoder ckks_fv.MFVEncoder
+	var sk *ckks_fv.SecretKey
+	var pk *ckks_fv.PublicKey
+	var fvEncryptor ckks_fv.MFVEncryptor
+	var fvDecryptor ckks_fv.MFVDecryptor
+	var fvEvaluator ckks_fv.MFVEvaluator
+	var fvNoiseEstimator ckks_fv.MFVNoiseEstimator
+	var rubato ckks_fv.MFVRubato
+
+	var nonces [][]byte
+	var key []uint64
+	var stCt []*ckks_fv.Ciphertext
+	var keystream [][]uint64
+
+	var rubatoModDown []int
+	var stcModDown []int
+
+	// RtF parameters
+	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
+	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
+	// LogSlots is hardcoded in the parameters, but can be changed from 4 to 15.
+	// When changing logSlots make sure that the number of levels allocated to CtS is
+	// smaller or equal to logSlots.
+
+	hbtpParams := ckks_fv.RtFParams[paramIndex]
+	params, err := hbtpParams.Params()
+	if err != nil {
+		panic(err)
+	}
+
+	// fullCoeffs denotes whether full coefficients are used for data encoding
+	if fullCoeffs {
+		params.SetLogFVSlots(params.LogN())
+	} else {
+		params.SetLogFVSlots(params.LogSlots())
+	}
+
+	// Scheme context and keys
+	kgen = ckks_fv.NewKeyGenerator(params)
+
+	sk, pk = kgen.GenKeyPairSparse(hbtpParams.H)
+
+	fvEncoder = ckks_fv.NewMFVEncoder(params)
+
+	fvEncryptor = ckks_fv.NewMFVEncryptorFromPk(params, pk)
+	fvDecryptor = ckks_fv.NewMFVDecryptor(params, sk)
+	fvNoiseEstimator = ckks_fv.NewMFVNoiseEstimator(params, sk)
+
+	pDcds := fvEncoder.GenSlotToCoeffMatFV(radix)
+	rotations := kgen.GenRotationIndexesForSlotsToCoeffsMat(pDcds)
+	rotkeys := kgen.GenRotationKeysForRotations(rotations, true, sk)
+	rlk := kgen.GenRelinearizationKey(sk)
+
+	fvEvaluator = ckks_fv.NewMFVEvaluator(params, ckks_fv.EvaluationKey{Rlk: rlk, Rtks: rotkeys}, pDcds)
+
+	// Generating data set
+	key = make([]uint64, blocksize)
+	for i := 0; i < blocksize; i++ {
+		key[i] = uint64(i + 1) // Use (1, ..., 16) for testing
+	}
+
+	nonces = make([][]byte, params.FVSlots())
+	for i := 0; i < params.FVSlots(); i++ {
+		nonces[i] = make([]byte, 64)
+		rand.Read(nonces[i])
+	}
+	counter := make([]byte, 64)
+	rand.Read(counter)
+
+	keystream = make([][]uint64, params.FVSlots())
+	for i := 0; i < params.FVSlots(); i++ {
+		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
+	}
+	outputsize := blocksize - 4
+
+	// Find proper nbInitModDown value for fvHera
+	fmt.Println("=========== Start to find nbInitModDown ===========")
+	rubato = ckks_fv.NewMFVRubato(blocksize, numRound, params, fvEncoder, fvEncryptor, fvEvaluator, 0)
+	heKey := rubato.EncKey(key)
+	stCt = rubato.CryptNoModSwitch(nonces, counter, heKey)
+
+	invBudgets := make([]int, outputsize)
+	minInvBudget := int((^uint(0)) >> 1) // MaxInt
+	for i := 0; i < outputsize; i++ {
+		ksSlot := fvEvaluator.SlotsToCoeffsNoModSwitch(stCt[i])
+
+		invBudgets[i] = fvNoiseEstimator.InvariantNoiseBudget(ksSlot)
+		if invBudgets[i] < minInvBudget {
+			minInvBudget = invBudgets[i]
+		}
+		fvEvaluator.ModSwitchMany(ksSlot, ksSlot, ksSlot.Level())
+
+		ksCt := fvDecryptor.DecryptNew(ksSlot)
+		ksCoef := ckks_fv.NewPlaintextRingT(params)
+		fvEncoder.DecodeRingT(ksCt, ksCoef)
+
+		for j := 0; j < params.FVSlots(); j++ {
+			br_j := utils.BitReverse64(uint64(j), uint64(params.LogN()))
+
+			if ksCoef.Element.Value()[0].Coeffs[0][br_j] != keystream[j][i] {
+				fmt.Printf("[-] Validity failed")
+				os.Exit(0)
+			}
+		}
+	}
+	fmt.Printf("Budget info : min %d in %v\n", minInvBudget, invBudgets)
+
+	qi := params.Qi()
+	qiCount := params.QiCount()
+	logQi := make([]int, qiCount)
+	for i := 0; i < qiCount; i++ {
+		logQi[i] = int(math.Round(math.Log2(float64(qi[i]))))
+	}
+
+	nbInitModDown := 0
+	cutBits := logQi[qiCount-1]
+	for cutBits+40 < minInvBudget { // if minInvBudget is too close to cutBits, decryption can be failed
+		nbInitModDown++
+		cutBits += logQi[qiCount-nbInitModDown-1]
+	}
+	fmt.Printf("Preferred nbInitModDown = %d\n\n", nbInitModDown)
+
+	fmt.Println("=========== Start to find RubatoModDown & StcModDown ===========")
+	rubato = ckks_fv.NewMFVRubato(blocksize, numRound, params, fvEncoder, fvEncryptor, fvEvaluator, nbInitModDown)
+	heKey = rubato.EncKey(key)
+	stCt, rubatoModDown = rubato.CryptAutoModSwitch(nonces, counter, heKey, fvNoiseEstimator)
+	_, stcModDown = fvEvaluator.SlotsToCoeffsAutoModSwitch(stCt[0], fvNoiseEstimator)
+	for i := 0; i < outputsize; i++ {
+		ksSlot := fvEvaluator.SlotsToCoeffs(stCt[i], stcModDown)
+		if ksSlot.Level() > 0 {
+			fvEvaluator.ModSwitchMany(ksSlot, ksSlot, ksSlot.Level())
+		}
+
+		ksCt := fvDecryptor.DecryptNew(ksSlot)
+		ksCoef := ckks_fv.NewPlaintextRingT(params)
+		fvEncoder.DecodeRingT(ksCt, ksCoef)
+
+		for j := 0; j < params.FVSlots(); j++ {
+			br_j := utils.BitReverse64(uint64(j), uint64(params.LogN()))
+
+			if ksCoef.Element.Value()[0].Coeffs[0][br_j] != keystream[j][i] {
+				fmt.Printf("[-] Validity failed")
+				os.Exit(0)
+			}
+		}
+	}
+
+	fmt.Printf("Rubato modDown : %v\n", rubatoModDown)
+	fmt.Printf("SlotsToCoeffs modDown : %v\n", stcModDown)
+}
+
 func main() {
 	// findHeraModDown(4, 0, 2, false)
 	// testPlainRubato()
 	// testFVRubato(64, 2)
-	testRtFRubatoModDown(16, 5, 0, 1, true) // 128f
-	// testRtFRubatoModDown(16, 5, 1, 1, false) // 128s
-	// testRtFRubatoModDown(16, 5, 2, 1, true) // 128af
-	// testRtFRubatoModDown(16, 5, 3, 1, false) // 128as
-	// testRtFRubatoModDown(36, 2, 0, 1, true)  // 128f
-	// testRtFRubatoModDown(36, 2, 1, 1, false) // 128s
-	// testRtFRubatoModDown(36, 2, 2, 1, true)  // 128af
-	// testRtFRubatoModDown(36, 2, 3, 1, false) // 128as
-	// testRtFRubatoModDown(64, 2, 0, 1, true)  // 128f
-	// testRtFRubatoModDown(64, 2, 1, 1, false) // 128s
-	// testRtFRubatoModDown(64, 2, 2, 1, true)  // 128af
-	// testRtFRubatoModDown(64, 2, 3, 1, false) // 128as
+	findRubatoModDown(16, 5, 0, 2, true)
 }
