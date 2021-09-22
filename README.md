@@ -20,4 +20,4 @@ To benchmark all the parameters, run the following command in [ckks_fv](./ckks_f
 You can also benchmark specific parameter.
 For example, to run the parameter `80as` in the paper, run the following command.
 
-```go test -timeout=0s -bench=BenchmarkRtF80as```
+```go test -timeout=0s -bench=BenchmarkRtFHera80as```

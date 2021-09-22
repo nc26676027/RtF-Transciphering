@@ -5,35 +5,57 @@ package ckks_fv
 // (See github.com/smilecjf/lattigo/v2/examples/ckks_fv/main for an example)
 // StcModDownParams assumes that the decoding matrix is factorized with radix 2.
 
+type ModDownParams struct {
+	CipherModDown []int
+	StCModDown    []int
+}
+
 // HERA mod down indices for 80-bit security parameter
-var HeraModDownParams80 = [][]int{
-	{6, 2, 2, 2, 3},  // with RtF param 128f
-	{10, 2, 3, 3, 3}, // with RtF param 128s
-	{7, 2, 2, 2, 2},  // with RtF param 128af
-	{11, 2, 2, 3, 2}, // with RtF param 128as
+var HeraModDownParams80 = []ModDownParams{
+	{
+		// with RtF param 128f and radix 2
+		CipherModDown: []int{6, 2, 2, 2, 3},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// with RtF param 128s and radix 0
+		CipherModDown: []int{10, 2, 3, 3, 3},
+		StCModDown:    []int{0},
+	},
+	{
+		// with RtF param 128af and radix 2
+		CipherModDown: []int{7, 2, 2, 2, 2},
+		StCModDown:    []int{1, 1, 0, 1, 1, 1, 0, 0},
+	},
+	{
+		// with RtF param 128as and radix 0
+		CipherModDown: []int{11, 2, 2, 3, 2},
+		StCModDown:    []int{0},
+	},
 }
 
 // HERA mod down indices for 128-bit security parameter
-var HeraModDownParams128 = [][]int{
-	{4, 2, 2, 2, 2, 3}, // with RtF param 128f
-	{9, 2, 3, 3, 3, 2}, // with RtF param 128s
-	{5, 2, 2, 2, 2, 2}, // with RtF param 128af
-	{9, 2, 2, 2, 3, 2}, // with RtF param 128as
-}
-
-// SlotToCoeff mod down indices for 80-bit security
-var StcModDownParams80 = [][]int{
-	{1, 0, 1, 1, 1, 1, 1, 1}, // with RtF param 128f and radix 2
-	{0},                      // with RtF param 128s and radix 0
-	{1, 1, 0, 1, 1, 1, 0, 0}, // with RtF param 128af and radix 2
-	{0},                      // with RtF param 128as and radix 0
-}
-
-var StcModDownParams128 = [][]int{
-	{0, 1, 1, 1, 1, 1, 1, 1}, // with RtF param 128f and radix 2
-	{1},                      // with RtF param 128s and radix 0
-	{1, 1, 0, 1, 1, 1, 0, 0}, // with RtF param 128af and radix 2
-	{0, 1},                   // with RtF param 128as and radix 2
+var HeraModDownParams128 = []ModDownParams{
+	{
+		// with RtF param 128f and radix 2
+		CipherModDown: []int{4, 2, 2, 2, 2, 3},
+		StCModDown:    []int{0, 1, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// with RtF param 128s and radix 0
+		CipherModDown: []int{9, 2, 3, 3, 3, 2},
+		StCModDown:    []int{1},
+	},
+	{
+		// with RtF param 128af and radix 2
+		CipherModDown: []int{5, 2, 2, 2, 2, 2},
+		StCModDown:    []int{1, 1, 0, 1, 1, 1, 0, 0},
+	},
+	{
+		// with RtF param 128as and radix 2
+		CipherModDown: []int{9, 2, 2, 2, 3, 2},
+		StCModDown:    []int{0, 1},
+	},
 }
 
 var RtFParams = []*HalfBootParameters{

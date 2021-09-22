@@ -11,46 +11,46 @@ import (
 )
 
 // Benchmark RtF framework for 80-bit security full-slots parameter
-func BenchmarkRtF80f(b *testing.B) {
-	benchmarkRtF(b, "80f", 4, 0, 2, true)
+func BenchmarkRtFHera80f(b *testing.B) {
+	benchmarkRtFHera(b, "80f", 4, 0, 2, true)
 }
 
 // Benchmark RtF framework for 80-bit security 4-slots parameter
-func BenchmarkRtF80s(b *testing.B) {
-	benchmarkRtF(b, "80s", 4, 1, 0, false)
+func BenchmarkRtFHera80s(b *testing.B) {
+	benchmarkRtFHera(b, "80s", 4, 1, 0, false)
 }
 
 // Benchmark RtF framework for 80-bit security full-slots parameter with arcsine evaluation
-func BenchmarkRtF80af(b *testing.B) {
-	benchmarkRtF(b, "80af", 4, 2, 2, true)
+func BenchmarkRtFHera80af(b *testing.B) {
+	benchmarkRtFHera(b, "80af", 4, 2, 2, true)
 }
 
 // Benchmark RtF framework for 80-bit security 4-slots parameter with arcsine evaluation
-func BenchmarkRtF80as(b *testing.B) {
-	benchmarkRtF(b, "80as", 4, 3, 0, false)
+func BenchmarkRtFHera80as(b *testing.B) {
+	benchmarkRtFHera(b, "80as", 4, 3, 0, false)
 }
 
 // Benchmark RtF framework for 128-bit security full-slots parameter
-func BenchmarkRtF128f(b *testing.B) {
-	benchmarkRtF(b, "128f", 5, 0, 2, true)
+func BenchmarkRtFHera128f(b *testing.B) {
+	benchmarkRtFHera(b, "128f", 5, 0, 2, true)
 }
 
 // Benchmark RtF framework for 128-bit security 4-slots parameter
-func BenchmarkRtF128s(b *testing.B) {
-	benchmarkRtF(b, "128s", 5, 1, 0, false)
+func BenchmarkRtFHera128s(b *testing.B) {
+	benchmarkRtFHera(b, "128s", 5, 1, 0, false)
 }
 
 // Benchmark RtF framework for 128-bit security full-slots parameter with arcsine evaluation
-func BenchmarkRtF128af(b *testing.B) {
-	benchmarkRtF(b, "128af", 5, 2, 2, true)
+func BenchmarkRtFHera128af(b *testing.B) {
+	benchmarkRtFHera(b, "128af", 5, 2, 2, true)
 }
 
 // Benchmark RtF framework for 128-bit security 4-slots parameter with arcsine evaluation
-func BenchmarkRtF128as(b *testing.B) {
-	benchmarkRtF(b, "128as", 5, 3, 2, false)
+func BenchmarkRtFHera128as(b *testing.B) {
+	benchmarkRtFHera(b, "128as", 5, 3, 2, false)
 }
 
-func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix int, fullCoeffs bool) {
+func benchmarkRtFHera(b *testing.B, name string, numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	var err error
 
 	var hbtp *HalfBootstrapper
@@ -89,11 +89,11 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 	// HERA parameters in RtF
 	var heraModDown, stcModDown []int
 	if numRound == 4 {
-		heraModDown = HeraModDownParams80[paramIndex]
-		stcModDown = StcModDownParams80[paramIndex]
+		heraModDown = HeraModDownParams80[paramIndex].CipherModDown
+		stcModDown = HeraModDownParams80[paramIndex].StCModDown
 	} else {
-		heraModDown = HeraModDownParams128[paramIndex]
-		stcModDown = StcModDownParams128[paramIndex]
+		heraModDown = HeraModDownParams128[paramIndex].CipherModDown
+		stcModDown = HeraModDownParams128[paramIndex].StCModDown
 	}
 
 	// fullCoeffs denotes whether full coefficients are used for data encoding
@@ -229,7 +229,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 	kCt := hera.EncKey(key)
 
 	// FV Keystream
-	benchOffLat := fmt.Sprintf("RtF Offline Latency")
+	benchOffLat := fmt.Sprintf("RtF HERA Offline Latency")
 	b.Run(benchOffLat, func(b *testing.B) {
 		fvKeystreams = hera.Crypt(nonces, kCt, heraModDown)
 		for i := 0; i < 1; i++ {
@@ -238,7 +238,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 		}
 	})
 	/* We assume that b.N == 1 */
-	benchOffThrput := fmt.Sprintf("RtF Offline Throughput")
+	benchOffThrput := fmt.Sprintf("RtF HERA Offline Throughput")
 	b.Run(benchOffThrput, func(b *testing.B) {
 		for i := 1; i < 16; i++ {
 			fvKeystreams[i] = fvEvaluator.SlotsToCoeffs(fvKeystreams[i], stcModDown)
@@ -247,7 +247,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 	})
 
 	var ctBoot *Ciphertext
-	benchOnline := fmt.Sprintf("RtF Online Lat x1")
+	benchOnline := fmt.Sprintf("RtF HERA Online Lat x1")
 	b.Run(benchOnline, func(b *testing.B) {
 		// Encrypt and mod switch to the lowest level
 		ciphertext := NewCiphertextFVLvl(params, 1, 0)
