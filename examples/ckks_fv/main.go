@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/ldsec/lattigo/v2/ckks_fv"
+	"github.com/ldsec/lattigo/v2/ring"
 	"github.com/ldsec/lattigo/v2/utils"
 	"golang.org/x/crypto/sha3"
 )
@@ -278,11 +279,17 @@ func plainHera(roundNum int, nonce []byte, key []uint64, plainModulus uint64) (s
 	return
 }
 
-func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key []uint64, plainModulus uint64) (state []uint64) {
+func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key []uint64, plainModulus uint64, sigma float64) (state []uint64) {
 	xof := sha3.NewShake256()
 	xof.Write(nonce)
 	xof.Write(counter)
 	state = make([]uint64, blocksize)
+
+	prng, err := utils.NewPRNG()
+	if err != nil {
+		panic(err)
+	}
+	gaussianSampler := ring.NewGaussianSampler(prng)
 
 	rks := make([][]uint64, numRound+1)
 
@@ -316,6 +323,9 @@ func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key 
 	rubatoLinearLayer(state, plainModulus)
 	rubatoFeistel(state, plainModulus)
 	rubatoLinearLayer(state, plainModulus)
+	if sigma > 0 {
+		rubatoAddGaussianNoise(state, plainModulus, gaussianSampler, sigma)
+	}
 	for i := 0; i < blocksize; i++ {
 		state[i] = (state[i] + rks[numRound][i]) % plainModulus
 	}
@@ -421,6 +431,11 @@ func rubatoFeistel(state []uint64, plainModulus uint64) {
 	}
 }
 
+func rubatoAddGaussianNoise(state []uint64, plainModulus uint64, gaussianSampler *ring.GaussianSampler, sigma float64) {
+	bound := int(6 * sigma)
+	gaussianSampler.AGN(state, plainModulus, sigma, bound)
+}
+
 func testPlainRubato() {
 	numRound := 5
 	blocksize := 16 // Should be 16, 36 or 64
@@ -437,7 +452,7 @@ func testPlainRubato() {
 	// Generate nonce
 	rand.Read(nonce)
 
-	state := plainRubato(blocksize, numRound, nonce, counter, key, t)
+	state := plainRubato(blocksize, numRound, nonce, counter, key, t, 1.0)
 	fmt.Println(state)
 }
 
@@ -497,7 +512,7 @@ func testFVRubato(blocksize int, numRound int) {
 	fmt.Println("Computing plain keystream...")
 	keystream = make([][]uint64, params.FVSlots())
 	for i := 0; i < params.FVSlots(); i++ {
-		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
+		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus(), 1.0)
 	}
 
 	// Evaluate the Rubato keystream
@@ -518,7 +533,7 @@ func testFVRubato(blocksize int, numRound int) {
 	}
 }
 
-func testRtFRubatoModDown(blocksize int, numRound int, paramIndex int, radix int, fullCoeffs bool) {
+func testRtFRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs bool) {
 	var err error
 
 	var hbtp *ckks_fv.HalfBootstrapper
@@ -544,6 +559,12 @@ func testRtFRubatoModDown(blocksize int, numRound int, paramIndex int, radix int
 	var rubatoModDown []int
 	var stcModDown []int
 
+	// Rubato parameter
+	blocksize := ckks_fv.RubatoParams[rubatoParam].Blocksize
+	numRound := ckks_fv.RubatoParams[rubatoParam].NumRound
+	plainModulus := ckks_fv.RubatoParams[rubatoParam].PlainModulus
+	sigma := ckks_fv.RubatoParams[rubatoParam].Sigma
+
 	// RtF parameters
 	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
 	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
@@ -556,6 +577,7 @@ func testRtFRubatoModDown(blocksize int, numRound int, paramIndex int, radix int
 	if err != nil {
 		panic(err)
 	}
+	params.SetPlainModulus(plainModulus)
 	messageScaling := float64(params.PlainModulus()) / (2 * hbtpParams.MessageRatio)
 
 	// Rubato parameters in RtF
@@ -627,7 +649,7 @@ func testRtFRubatoModDown(blocksize int, numRound int, paramIndex int, radix int
 
 		keystream = make([][]uint64, params.N())
 		for i := 0; i < params.N(); i++ {
-			keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
+			keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus(), sigma)
 		}
 
 		for s := 0; s < outputsize; s++ {
@@ -666,7 +688,7 @@ func testRtFRubatoModDown(blocksize int, numRound int, paramIndex int, radix int
 
 		keystream = make([][]uint64, params.Slots())
 		for i := 0; i < params.Slots(); i++ {
-			keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
+			keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus(), sigma)
 		}
 
 		for s := 0; s < outputsize; s++ {
@@ -753,7 +775,7 @@ func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valu
 	fmt.Println(precStats.String())
 }
 
-func findRubatoModDown(blocksize int, numRound int, paramIndex int, radix int, fullCoeffs bool) {
+func findRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs bool) {
 	var err error
 
 	var kgen ckks_fv.KeyGenerator
@@ -774,6 +796,11 @@ func findRubatoModDown(blocksize int, numRound int, paramIndex int, radix int, f
 	var rubatoModDown []int
 	var stcModDown []int
 
+	// Rubato parameter
+	blocksize := ckks_fv.RubatoParams[rubatoParam].Blocksize
+	numRound := ckks_fv.RubatoParams[rubatoParam].NumRound
+	plainModulus := ckks_fv.RubatoParams[rubatoParam].PlainModulus
+
 	// RtF parameters
 	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
 	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
@@ -786,6 +813,7 @@ func findRubatoModDown(blocksize int, numRound int, paramIndex int, radix int, f
 	if err != nil {
 		panic(err)
 	}
+	params.SetPlainModulus(plainModulus)
 
 	// fullCoeffs denotes whether full coefficients are used for data encoding
 	if fullCoeffs {
@@ -828,7 +856,7 @@ func findRubatoModDown(blocksize int, numRound int, paramIndex int, radix int, f
 
 	keystream = make([][]uint64, params.FVSlots())
 	for i := 0; i < params.FVSlots(); i++ {
-		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus())
+		keystream[i] = plainRubato(blocksize, numRound, nonces[i], counter, key, params.PlainModulus(), -1)
 	}
 	outputsize := blocksize - 4
 
@@ -912,5 +940,5 @@ func main() {
 	// findHeraModDown(4, 0, 2, false)
 	// testPlainRubato()
 	// testFVRubato(64, 2)
-	findRubatoModDown(16, 5, 0, 2, true)
+	findRubatoModDown(ckks_fv.RUBATO128S, 0, 2, true)
 }

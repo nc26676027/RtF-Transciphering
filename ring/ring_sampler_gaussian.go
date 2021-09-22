@@ -101,6 +101,28 @@ func (gaussianSampler *GaussianSampler) ReadAndAddLvl(level int, pol *Poly, base
 	}
 }
 
+// AddGaussianNoise adds gaussian noises to state of the Rubato cipher.
+func (GaussianSampler *GaussianSampler) AGN(state []uint64, plainModulus uint64, sigma float64, bound int) {
+
+	var coeffFlo float64
+	var coeffInt, sign uint64
+
+	GaussianSampler.prng.Clock(GaussianSampler.randomBufferN)
+
+	outputsize := len(state) - 4
+	for i := 0; i < outputsize; i++ {
+		for {
+			coeffFlo, sign = GaussianSampler.normFloat64()
+
+			if coeffInt = uint64(coeffFlo*sigma + 0.5); coeffInt <= uint64(bound) {
+				break
+			}
+		}
+
+		state[i] = CRed(state[i]+((coeffInt*sign)|(plainModulus-coeffInt)*(sign^1)), plainModulus)
+	}
+}
+
 // randFloat64 returns a uniform float64 value between 0 and 1.
 func randFloat64(randomBytes []byte) float64 {
 	return float64(binary.BigEndian.Uint64(randomBytes)&0x1fffffffffffff) / float64(0x1fffffffffffff)
