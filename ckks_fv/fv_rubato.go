@@ -7,6 +7,115 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+type RubatoParam struct {
+	Blocksize    int
+	PlainModulus uint64
+	NumRound     int
+	Sigma        float64
+}
+
+const (
+	RUBATO80S = iota
+	RUBATO80M
+	RUBATO80L
+	RUBATO128S
+	RUBATO128M
+	RUBATO128L
+	RUBATO192S
+	RUBATO192M
+	RUBATO192L
+	RUBATO256S
+	RUBATO256M
+	RUBATO256L
+)
+
+var RubatoParams = []RubatoParam{
+	{
+		// RUBATO80S
+		Blocksize:    16,
+		PlainModulus: 0xffa0001,
+		NumRound:     2,
+		Sigma:        4.4282593124559027251334012652716387400820308059307747000917767,
+	},
+	{
+		// RUBATO80M
+		Blocksize:    36,
+		PlainModulus: 0x3ee0001,
+		NumRound:     2,
+		Sigma:        0.99735570100358169484986514983595467118964657791233664416481457,
+	},
+	{
+		// RUBATO80L
+		Blocksize:    64,
+		PlainModulus: 0x1fc0001,
+		NumRound:     2,
+		Sigma:        0.63830764864229228470391369589501098956137380986389545226548133,
+	},
+	{
+		// RUBATO128S
+		Blocksize:    16,
+		PlainModulus: 0x7e00001,
+		NumRound:     5,
+		Sigma:        2.9920671030107450845495954495078640135689397337370099324944437,
+	},
+	{
+		// RUBATO128M
+		Blocksize:    36,
+		PlainModulus: 0x7e0001,
+		NumRound:     2,
+		Sigma:        2.5133363665290258710216601775866057713979093763390883432953327,
+	},
+	{
+		// RUBATO128L
+		Blocksize:    64,
+		PlainModulus: 0x3ee0001,
+		NumRound:     2,
+		Sigma:        1.0771441570838682304378543618228310448848183041453235756979997,
+	},
+	{
+		// RUBATO192S
+		Blocksize:    16,
+		PlainModulus: 0xffa0001,
+		NumRound:     7,
+		Sigma:        5.9442399779813469013051962930222898402902936043575263992222949,
+	},
+	{
+		// RUBATO192M
+		Blocksize:    36,
+		PlainModulus: 0x7e00001,
+		NumRound:     4,
+		Sigma:        3.0718555590910316201375846614947403872641114599699968640276289,
+	},
+	{
+		// RUBATO192L
+		Blocksize:    64,
+		PlainModulus: 0x3ee0001,
+		NumRound:     3,
+		Sigma:        1.5558748935655874439657896337440892870558486615432451648971107,
+	},
+	{
+		// RUBATO256S
+		Blocksize:    16,
+		PlainModulus: 0xffa0001,
+		NumRound:     11,
+		Sigma:        4.7873073648171921352793527192125824217103035739792158919911100,
+	},
+	{
+		// RUBATO256M
+		Blocksize:    36,
+		PlainModulus: 0x7e00001,
+		NumRound:     6,
+		Sigma:        2.6729132786895989421976386015603585187882528288050622063617031,
+	},
+	{
+		// RUBATO256L
+		Blocksize:    64,
+		PlainModulus: 0x7e00001,
+		NumRound:     4,
+		Sigma:        1.9947114020071633896997302996719093423792931558246732883296291,
+	},
+}
+
 type MFVRubato interface {
 	Crypt(nonce [][]byte, counter []byte, kCt []*Ciphertext, rubatoModDown []int) []*Ciphertext
 	CryptNoModSwitch(nonce [][]byte, counter []byte, kCt []*Ciphertext) []*Ciphertext
