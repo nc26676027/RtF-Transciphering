@@ -317,8 +317,8 @@ func (rubato *mfvRubato) CryptNoModSwitch(nonce [][]byte, counter []byte, kCt []
 	}
 	rubato.linLayer()
 	rubato.feistel()
-	rubato.linLayer()
-	rubato.addRoundKey(rubato.numRound, true)
+	rubato.finLinLayer()
+	rubato.finAddRoundKey(rubato.blocksize - 4)
 	return rubato.stCt
 }
 
@@ -341,8 +341,8 @@ func (rubato *mfvRubato) CryptAutoModSwitch(nonce [][]byte, counter []byte, kCt 
 	rubato.linLayer()
 	rubato.feistel()
 	rubato.modSwitchAuto(rubato.numRound, noiseEstimator, rubatoModDown)
-	rubato.linLayer()
-	rubato.addRoundKey(rubato.numRound, true)
+	rubato.finLinLayer()
+	rubato.finAddRoundKey(rubato.blocksize - 4)
 	return rubato.stCt, rubatoModDown
 }
 
@@ -368,8 +368,8 @@ func (rubato *mfvRubato) Crypt(nonce [][]byte, counter []byte, kCt []*Ciphertext
 	rubato.linLayer()
 	rubato.feistel()
 	rubato.modSwitch(rubatoModDown[rubato.numRound])
-	rubato.linLayer()
-	rubato.addRoundKey(rubato.numRound, true)
+	rubato.finLinLayer()
+	rubato.finAddRoundKey(rubato.blocksize - 4)
 	return rubato.stCt
 }
 
@@ -382,7 +382,7 @@ func (rubato *mfvRubato) addRoundKey(round int, reduce bool) {
 	}
 
 	for i := 0; i < rubato.blocksize; i++ {
-		rubato.rkCt[i] = rubato.evaluator.MulNew(rubato.mkCt[i], rubato.rcPt[i])
+		rubato.rkCt[i] = ev.MulNew(rubato.mkCt[i], rubato.rcPt[i])
 	}
 
 	for i := 0; i < rubato.blocksize; i++ {
@@ -391,6 +391,23 @@ func (rubato *mfvRubato) addRoundKey(round int, reduce bool) {
 		} else {
 			ev.AddNoMod(rubato.stCt[i], rubato.rkCt[i], rubato.stCt[i])
 		}
+	}
+}
+
+func (rubato *mfvRubato) finAddRoundKey(outputsize int) {
+	ev := rubato.evaluator
+
+	for i := 0; i < outputsize; i++ {
+		rubato.rcPt[i] = NewPlaintextMulLvl(rubato.params, rubato.stCt[i].Level())
+		rubato.encoder.EncodeUintMulSmall(rubato.rc[rubato.numRound][i], rubato.rcPt[i])
+	}
+
+	for i := 0; i < outputsize; i++ {
+		rubato.rkCt[i] = ev.MulNew(rubato.mkCt[i], rubato.rcPt[i])
+	}
+
+	for i := 0; i < outputsize; i++ {
+		ev.Add(rubato.stCt[i], rubato.rkCt[i], rubato.stCt[i])
 	}
 }
 
@@ -520,6 +537,218 @@ func (rubato *mfvRubato) linLayer() {
 			ev.Reduce(sum, sum)
 
 			for col := 0; col < 8; col++ {
+				rubato.stCt[row*8+col] = ev.AddNoModNew(sum, buf[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+1)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+1)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+2)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+2)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+2)%8], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+3)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+3)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+5)%8], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+			}
+		}
+	} else {
+		panic("Invalid blocksize")
+	}
+}
+
+func (rubato *mfvRubato) finLinLayer() {
+	ev := rubato.evaluator
+	buf := make([]*Ciphertext, rubato.blocksize)
+
+	if rubato.blocksize == 16 {
+		// MixColumns
+		for col := 0; col < 4; col++ {
+			sum := ev.AddNoModNew(rubato.stCt[col], rubato.stCt[col+4])
+			ev.AddNoMod(sum, rubato.stCt[col+8], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+12], sum)
+
+			for row := 0; row < 4; row++ {
+				buf[row*4+col] = ev.AddNoModNew(sum, rubato.stCt[row*4+col])
+				ev.AddNoMod(buf[row*4+col], rubato.stCt[((row+1)%4)*4+col], buf[row*4+col])
+				ev.AddNoMod(buf[row*4+col], rubato.stCt[((row+1)%4)*4+col], buf[row*4+col])
+				ev.Reduce(buf[row*4+col], buf[row*4+col])
+			}
+		}
+		// MixRows
+		for row := 0; row < 3; row++ {
+			sum := ev.AddNoModNew(buf[4*row], buf[4*row+1])
+			ev.AddNoMod(sum, buf[4*row+2], sum)
+			ev.AddNoMod(sum, buf[4*row+3], sum)
+
+			for col := 0; col < 4; col++ {
+				rubato.stCt[row*4+col] = ev.AddNoModNew(sum, buf[row*4+col])
+				ev.AddNoMod(rubato.stCt[row*4+col], buf[row*4+(col+1)%4], rubato.stCt[row*4+col])
+				ev.AddNoMod(rubato.stCt[row*4+col], buf[row*4+(col+1)%4], rubato.stCt[row*4+col])
+				ev.Reduce(rubato.stCt[row*4+col], rubato.stCt[row*4+col])
+			}
+		}
+	} else if rubato.blocksize == 36 {
+		// MixColumns
+		for col := 0; col < 6; col++ {
+			sum := ev.AddNoModNew(rubato.stCt[col], rubato.stCt[col+6])
+			ev.AddNoMod(sum, rubato.stCt[col+12], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+18], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+24], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+30], sum)
+			ev.Reduce(sum, sum)
+
+			for row := 0; row < 6; row++ {
+				buf[row*6+col] = ev.AddNoModNew(sum, rubato.stCt[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[row*6+col], buf[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[row*6+col], buf[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[((row+1)%6)*6+col], buf[row*6+col])
+				ev.Reduce(buf[row*6+col], buf[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[((row+2)%6)*6+col], buf[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[((row+2)%6)*6+col], buf[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[((row+2)%6)*6+col], buf[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[((row+3)%6)*6+col], buf[row*6+col])
+				ev.AddNoMod(buf[row*6+col], rubato.stCt[((row+3)%6)*6+col], buf[row*6+col])
+				ev.Reduce(buf[row*6+col], buf[row*6+col])
+			}
+		}
+		// MixRows
+		for row := 0; row < 5; row++ {
+			sum := ev.AddNoModNew(buf[6*row], buf[6*row+1])
+			ev.AddNoMod(sum, buf[6*row+2], sum)
+			ev.AddNoMod(sum, buf[6*row+3], sum)
+			ev.AddNoMod(sum, buf[6*row+4], sum)
+			ev.AddNoMod(sum, buf[6*row+5], sum)
+			ev.Reduce(sum, sum)
+
+			for col := 0; col < 6; col++ {
+				rubato.stCt[row*6+col] = ev.AddNoModNew(sum, buf[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+col], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+col], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+1)%6], rubato.stCt[row*6+col])
+				ev.Reduce(buf[row*6+col], buf[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+2)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+2)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+2)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+3)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+3)%6], rubato.stCt[row*6+col])
+				ev.Reduce(rubato.stCt[row*6+col], rubato.stCt[row*6+col])
+			}
+		}
+		{
+			row := 5
+			sum := ev.AddNoModNew(buf[6*row], buf[6*row+1])
+			ev.AddNoMod(sum, buf[6*row+2], sum)
+			ev.AddNoMod(sum, buf[6*row+3], sum)
+			ev.AddNoMod(sum, buf[6*row+4], sum)
+			ev.AddNoMod(sum, buf[6*row+5], sum)
+			ev.Reduce(sum, sum)
+
+			for col := 0; col < 2; col++ {
+				rubato.stCt[row*6+col] = ev.AddNoModNew(sum, buf[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+col], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+col], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+1)%6], rubato.stCt[row*6+col])
+				ev.Reduce(buf[row*6+col], buf[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+2)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+2)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+2)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+3)%6], rubato.stCt[row*6+col])
+				ev.AddNoMod(rubato.stCt[row*6+col], buf[row*6+(col+3)%6], rubato.stCt[row*6+col])
+				ev.Reduce(rubato.stCt[row*6+col], rubato.stCt[row*6+col])
+			}
+		}
+	} else if rubato.blocksize == 64 {
+		// MixColumns
+		for col := 0; col < 8; col++ {
+			sum := ev.AddNoModNew(rubato.stCt[col], rubato.stCt[col+8])
+			ev.AddNoMod(sum, rubato.stCt[col+16], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+24], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+32], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+40], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+48], sum)
+			ev.AddNoMod(sum, rubato.stCt[col+56], sum)
+			ev.Reduce(sum, sum)
+
+			for row := 0; row < 8; row++ {
+				buf[row*8+col] = ev.AddNoModNew(sum, rubato.stCt[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[row*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[row*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[row*8+col], buf[row*8+col])
+				ev.Reduce(buf[row*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+1)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+1)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+2)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+2)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+2)%8)*8+col], buf[row*8+col])
+				ev.Reduce(buf[row*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+3)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+3)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+4)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+4)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+4)%8)*8+col], buf[row*8+col])
+				ev.Reduce(buf[row*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+4)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+4)%8)*8+col], buf[row*8+col])
+				ev.AddNoMod(buf[row*8+col], rubato.stCt[((row+5)%8)*8+col], buf[row*8+col])
+				ev.Reduce(buf[row*8+col], buf[row*8+col])
+			}
+		}
+		// MixRows
+		for row := 0; row < 7; row++ {
+			sum := ev.AddNoModNew(buf[8*row], buf[8*row+1])
+			ev.AddNoMod(sum, buf[8*row+2], sum)
+			ev.AddNoMod(sum, buf[8*row+3], sum)
+			ev.AddNoMod(sum, buf[8*row+4], sum)
+			ev.AddNoMod(sum, buf[8*row+5], sum)
+			ev.AddNoMod(sum, buf[8*row+6], sum)
+			ev.AddNoMod(sum, buf[8*row+7], sum)
+			ev.Reduce(sum, sum)
+
+			for col := 0; col < 8; col++ {
+				rubato.stCt[row*8+col] = ev.AddNoModNew(sum, buf[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+1)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+1)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+2)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+2)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+2)%8], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+3)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+3)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+4)%8], rubato.stCt[row*8+col])
+				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+(col+5)%8], rubato.stCt[row*8+col])
+				ev.Reduce(rubato.stCt[row*8+col], rubato.stCt[row*8+col])
+			}
+		}
+		{
+			row := 7
+			sum := ev.AddNoModNew(buf[8*row], buf[8*row+1])
+			ev.AddNoMod(sum, buf[8*row+2], sum)
+			ev.AddNoMod(sum, buf[8*row+3], sum)
+			ev.AddNoMod(sum, buf[8*row+4], sum)
+			ev.AddNoMod(sum, buf[8*row+5], sum)
+			ev.AddNoMod(sum, buf[8*row+6], sum)
+			ev.AddNoMod(sum, buf[8*row+7], sum)
+			ev.Reduce(sum, sum)
+
+			for col := 0; col < 4; col++ {
 				rubato.stCt[row*8+col] = ev.AddNoModNew(sum, buf[row*8+col])
 				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
 				ev.AddNoMod(rubato.stCt[row*8+col], buf[row*8+col], rubato.stCt[row*8+col])
