@@ -40,7 +40,7 @@ func findHeraModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.RtFParams[paramIndex]
+	hbtpParams := ckks_fv.RtFHeraParams[paramIndex]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
@@ -473,7 +473,7 @@ func testFVRubato(blocksize int, numRound int) {
 	var keystreamCt []*ckks_fv.Ciphertext
 
 	// params := ckks_fv.DefaultFVParams[3].WithPlainModulus(0x1ffc0001)
-	hbtpParams := ckks_fv.RtFParams[0]
+	hbtpParams := ckks_fv.RtFRubatoParams[0]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
@@ -572,7 +572,7 @@ func testRtFRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.RtFParams[paramIndex]
+	hbtpParams := ckks_fv.RtFRubatoParams[paramIndex]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
@@ -660,7 +660,7 @@ func testRtFRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs
 			}
 		}
 
-		plainCKKSRingTs = make([]*ckks_fv.PlaintextRingT, blocksize)
+		plainCKKSRingTs = make([]*ckks_fv.PlaintextRingT, outputsize)
 		for s := 0; s < outputsize; s++ {
 			plainCKKSRingTs[s] = ckksEncoder.EncodeCoeffsRingTNew(coeffs[s], messageScaling)
 			poly := plainCKKSRingTs[s].Value()[0]
@@ -775,7 +775,7 @@ func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valu
 	fmt.Println(precStats.String())
 }
 
-func findRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs bool) {
+func findRubatoModDown(rubatoParam int, radix int) {
 	var err error
 
 	var kgen ckks_fv.KeyGenerator
@@ -801,30 +801,23 @@ func findRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs bo
 	numRound := ckks_fv.RubatoParams[rubatoParam].NumRound
 	plainModulus := ckks_fv.RubatoParams[rubatoParam].PlainModulus
 
-	// RtF parameters
-	// Four sets of parameters (index 0 to 3) ensuring 128 bit of security
+	// RtF Rubato parameters
+	// Four sets of parameters (index 0 to 1) ensuring 128 bit of security
 	// are available in github.com/smilecjf/lattigo/v2/ckks_fv/rtf_params
 	// LogSlots is hardcoded in the parameters, but can be changed from 4 to 15.
 	// When changing logSlots make sure that the number of levels allocated to CtS is
 	// smaller or equal to logSlots.
 
-	hbtpParams := ckks_fv.RtFParams[paramIndex]
+	hbtpParams := ckks_fv.RtFRubatoParams[0]
 	params, err := hbtpParams.Params()
 	if err != nil {
 		panic(err)
 	}
 	params.SetPlainModulus(plainModulus)
-
-	// fullCoeffs denotes whether full coefficients are used for data encoding
-	if fullCoeffs {
-		params.SetLogFVSlots(params.LogN())
-	} else {
-		params.SetLogFVSlots(params.LogSlots())
-	}
+	params.SetLogFVSlots(params.LogN())
 
 	// Scheme context and keys
 	kgen = ckks_fv.NewKeyGenerator(params)
-
 	sk, pk = kgen.GenKeyPairSparse(hbtpParams.H)
 
 	fvEncoder = ckks_fv.NewMFVEncoder(params)
@@ -940,5 +933,5 @@ func main() {
 	// findHeraModDown(4, 0, 2, false)
 	// testPlainRubato()
 	// testFVRubato(64, 2)
-	findRubatoModDown(ckks_fv.RUBATO128S, 0, 2, true)
+	findRubatoModDown(ckks_fv.RUBATO128S, 2)
 }
