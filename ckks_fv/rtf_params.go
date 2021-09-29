@@ -181,7 +181,7 @@ var RtFParams = []*HalfBootParameters{
 	{
 		LogN:     16,
 		LogSlots: 15,
-		t:        268042241, // 28-bit
+		t:        33292289, // 25-bit
 		Scale:    1 << 45,
 		Sigma:    DefaultSigma,
 		ResidualModuli: []uint64{
@@ -249,7 +249,7 @@ var RtFParams = []*HalfBootParameters{
 	{
 		LogN:     16,
 		LogSlots: 4,
-		t:        268042241, // 28-bit
+		t:        33292289, // 25-bit
 		Scale:    1 << 45,
 		Sigma:    DefaultSigma,
 		ResidualModuli: []uint64{
