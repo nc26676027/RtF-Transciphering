@@ -84,7 +84,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 	if err != nil {
 		panic(err)
 	}
-	messageScaling := float64(params.T()) / (2 * hbtpParams.MessageRatio)
+	messageScaling := float64(params.T()) / hbtpParams.MessageRatio
 
 	// HERA parameters in RtF
 	var heraModDown, stcModDown []int
@@ -254,7 +254,7 @@ func benchmarkRtF(b *testing.B, name string, numRound int, paramIndex int, radix
 		ciphertext.Value()[0] = plaintexts[0].Value()[0].CopyNew()
 		fvEvaluator.Sub(ciphertext, fvKeystreams[0], ciphertext)
 		fvEvaluator.TransformToNTT(ciphertext, ciphertext)
-		ciphertext.SetScale(float64(params.Qi()[0]) / float64(params.T()) * messageScaling)
+		ciphertext.SetScale(math.Exp2(math.Round(math.Log2(float64(params.Qi()[0]) / float64(params.T()) * messageScaling))))
 
 		// Half-Bootstrap the ciphertext (homomorphic evaluation of ModRaise -> SubSum -> CtS -> EvalMod)
 		// It takes a ciphertext at level 0 (if not at level 0, then it will reduce it to level 0)
