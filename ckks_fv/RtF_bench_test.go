@@ -396,10 +396,10 @@ func benchmarkRtFRubato(b *testing.B, rubatoParam int) {
 
 	nonces = make([][]byte, params.N())
 	for i := 0; i < params.N(); i++ {
-		nonces[i] = make([]byte, 64)
+		nonces[i] = make([]byte, 8)
 		rand.Read(nonces[i])
 	}
-	counter = make([]byte, 64)
+	counter = make([]byte, 8)
 	rand.Read(counter)
 
 	// Get keystream

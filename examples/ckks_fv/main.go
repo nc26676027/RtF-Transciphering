@@ -297,7 +297,6 @@ func plainRubato(blocksize int, numRound int, nonce []byte, counter []byte, key 
 		rks[r] = make([]uint64, blocksize)
 		for i := 0; i < blocksize; i++ {
 			rks[r][i] = ckks_fv.SampleZqx(xof, plainModulus) * key[i] % plainModulus
-			// rks[r][i] = uint64(i+1) * key[i] % t
 		}
 	}
 
@@ -436,13 +435,14 @@ func rubatoAddGaussianNoise(state []uint64, plainModulus uint64, gaussianSampler
 	gaussianSampler.AGN(state, plainModulus, sigma, bound)
 }
 
-func testPlainRubato() {
-	numRound := 5
-	blocksize := 16 // Should be 16, 36 or 64
+func testPlainRubato(rubatoParam int) {
+	numRound := ckks_fv.RubatoParams[rubatoParam].NumRound
+	blocksize := ckks_fv.RubatoParams[rubatoParam].Blocksize
 	nonce := make([]byte, 8)
 	counter := make([]byte, 8)
 	key := make([]uint64, blocksize)
-	t := uint64(0x3ffc0001)
+	t := ckks_fv.RubatoParams[rubatoParam].PlainModulus
+	sigma := ckks_fv.RubatoParams[rubatoParam].Sigma
 
 	// Generate secret key
 	for i := 0; i < blocksize; i++ {
@@ -450,9 +450,12 @@ func testPlainRubato() {
 	}
 
 	// Generate nonce
-	rand.Read(nonce)
+	for i := 0; i < 8; i++ {
+		nonce[i] = byte(0)
+		counter[i] = byte(0)
+	}
 
-	state := plainRubato(blocksize, numRound, nonce, counter, key, t, 1.0)
+	state := plainRubato(blocksize, numRound, nonce, counter, key, t, sigma)
 	fmt.Println(state)
 }
 
@@ -508,10 +511,13 @@ func testFVRubato(rubatoParam int) {
 
 	nonces = make([][]byte, params.FVSlots())
 	for i := 0; i < params.FVSlots(); i++ {
-		nonces[i] = make([]byte, 64)
-		rand.Read(nonces[i])
+		nonces[i] = make([]byte, 8)
+		// rand.Read(nonces[i])
+		for j := 0; j < 8; j++ {
+			nonces[i][j] = byte(0)
+		}
 	}
-	counter := make([]byte, 64)
+	counter := make([]byte, 8)
 
 	// Compute plain Rubato keystream
 	fmt.Println("Computing plain keystream...")
@@ -936,7 +942,7 @@ func findRubatoModDown(rubatoParam int, radix int) {
 
 func main() {
 	// findHeraModDown(4, 0, 2, false)
-	// testPlainRubato()
-	// testFVRubato(ckks_fv.RUBATO128S)
-	findRubatoModDown(ckks_fv.RUBATO80S, 2)
+	testPlainRubato(ckks_fv.RUBATO80L)
+	// testFVRubato(ckks_fv.RUBATO80L)
+	// findRubatoModDown(ckks_fv.RUBATO80S, 2)
 }

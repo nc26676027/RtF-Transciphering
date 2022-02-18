@@ -26,7 +26,7 @@ func SampleZqx(rand io.Reader, q uint64) (res uint64) {
 		}
 		bytes[byteLen-1] &= uint8((1 << b) - 1)
 
-		res = 1
+		res = 0
 		for i := 0; i < byteLen; i++ {
 			res += uint64(bytes[i]) << (8 * i)
 		}
