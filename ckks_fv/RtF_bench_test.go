@@ -434,7 +434,7 @@ func benchmarkRtFRubato(b *testing.B, rubatoParam int) {
 	}
 
 	// FV Keystream
-	rubato = NewMFVRubato(blocksize, numRound, params, fvEncoder, fvEncryptor, fvEvaluator, rubatoModDown[0])
+	rubato = NewMFVRubato(rubatoParam, params, fvEncoder, fvEncryptor, fvEvaluator, rubatoModDown[0])
 	kCt := rubato.EncKey(key)
 
 	benchOffLat := fmt.Sprintf("RtF Rubato Offline Latency")

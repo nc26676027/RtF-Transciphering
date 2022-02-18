@@ -27,7 +27,7 @@ var RubatoParams = []RubatoParam{
 	{
 		// RUBATO80S
 		Blocksize:    16,
-		PlainModulus: 0x7e00001,
+		PlainModulus: 0x3ee0001,
 		NumRound:     2,
 		Sigma:        4.4282593124559027251334012652716387400820308059307747000917767,
 	},
@@ -41,14 +41,14 @@ var RubatoParams = []RubatoParam{
 	{
 		// RUBATO80L
 		Blocksize:    64,
-		PlainModulus: 0xfc0001,
+		PlainModulus: 0x1fc0001,
 		NumRound:     2,
 		Sigma:        0.63830764864229228470391369589501098956137380986389545226548133,
 	},
 	{
 		// RUBATO128S
 		Blocksize:    16,
-		PlainModulus: 0x7e00001,
+		PlainModulus: 0x3ee0001,
 		NumRound:     5,
 		Sigma:        4.1888939442150431183694336293110096189965156272318139054922212,
 	},
@@ -77,6 +77,7 @@ type MFVRubato interface {
 }
 
 type mfvRubato struct {
+	rubatoParam   int
 	blocksize     int
 	numRound      int
 	slots         int
@@ -95,11 +96,12 @@ type mfvRubato struct {
 	xof  []sha3.ShakeHash
 }
 
-func NewMFVRubato(blocksize int, numRound int, params *Parameters, encoder MFVEncoder, encryptor MFVEncryptor, evaluator MFVEvaluator, nbInitModDown int) MFVRubato {
+func NewMFVRubato(rubatoParam int, params *Parameters, encoder MFVEncoder, encryptor MFVEncryptor, evaluator MFVEvaluator, nbInitModDown int) MFVRubato {
 	rubato := new(mfvRubato)
 
-	rubato.blocksize = blocksize
-	rubato.numRound = numRound
+	rubato.rubatoParam = rubatoParam
+	rubato.blocksize = RubatoParams[rubatoParam].Blocksize
+	rubato.numRound = RubatoParams[rubatoParam].NumRound
 	rubato.slots = params.FVSlots()
 	rubato.nbInitModDown = nbInitModDown
 
@@ -108,16 +110,16 @@ func NewMFVRubato(blocksize int, numRound int, params *Parameters, encoder MFVEn
 	rubato.encryptor = encryptor
 	rubato.evaluator = evaluator
 
-	rubato.stCt = make([]*Ciphertext, blocksize)
-	rubato.mkCt = make([]*Ciphertext, blocksize)
-	rubato.rkCt = make([]*Ciphertext, blocksize)
-	rubato.rcPt = make([]*PlaintextMul, blocksize)
+	rubato.stCt = make([]*Ciphertext, rubato.blocksize)
+	rubato.mkCt = make([]*Ciphertext, rubato.blocksize)
+	rubato.rkCt = make([]*Ciphertext, rubato.blocksize)
+	rubato.rcPt = make([]*PlaintextMul, rubato.blocksize)
 	rubato.xof = make([]sha3.ShakeHash, rubato.slots)
 
 	rubato.rc = make([][][]uint64, rubato.numRound+1)
 	for r := 0; r <= rubato.numRound; r++ {
-		rubato.rc[r] = make([][]uint64, blocksize)
-		for i := 0; i < blocksize; i++ {
+		rubato.rc[r] = make([][]uint64, rubato.blocksize)
+		for i := 0; i < rubato.blocksize; i++ {
 			rubato.rc[r][i] = make([]uint64, rubato.slots)
 		}
 	}
@@ -125,7 +127,7 @@ func NewMFVRubato(blocksize int, numRound int, params *Parameters, encoder MFVEn
 	// Precompute Initial States
 	state := make([]uint64, rubato.slots)
 
-	for i := 0; i < blocksize; i++ {
+	for i := 0; i < rubato.blocksize; i++ {
 		for j := 0; j < rubato.slots; j++ {
 			state[j] = uint64(i + 1) // ic = 1, ..., blocksize
 		}
