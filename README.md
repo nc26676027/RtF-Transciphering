@@ -1,5 +1,5 @@
 # RtF Transciphering Framework
-This is an implementation of the the RtF transciphering framework along with the HERA cipher (proposed in [Transciphering Framework for Approximate Homomorphic Encryption](https://eprint.iacr.org/2020/1335)) and the Rubato cipher (proposed in [Rubato: Noisy Ciphers for Approximate Homomorphic Encryption]()) using the `lattigo` library.
+This is an implementation of the RtF transciphering framework along with the HERA cipher (proposed in [Transciphering Framework for Approximate Homomorphic Encryption](https://eprint.iacr.org/2020/1335)) and the Rubato cipher (proposed in [Rubato: Noisy Ciphers for Approximate Homomorphic Encryption]()) using the `lattigo` library.
 
 ## New Package
 We implement the hybrid framework in [ckks_fv](./ckks_fv), which contains the following functionalities.
