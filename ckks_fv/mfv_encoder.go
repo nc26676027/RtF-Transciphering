@@ -103,8 +103,8 @@ func newMultiLevelContext(params *Parameters) multiLevelContext {
 			panic(err)
 		}
 		ringQs[i] = ringQi
-		deltasMont[i] = GenLiftParams(ringQi, params.t)
-		scalers[i] = ring.NewRNSScaler(params.t, ringQi)
+		deltasMont[i] = GenLiftParams(ringQi, params.plainModulus)
+		scalers[i] = ring.NewRNSScaler(params.plainModulus, ringQi)
 	}
 
 	return multiLevelContext{
@@ -127,11 +127,11 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 		panic(err)
 	}
 
-	if ringT, err = ring.NewRing(params.N(), []uint64{params.t}); err != nil {
+	if ringT, err = ring.NewRing(params.N(), []uint64{params.plainModulus}); err != nil {
 		panic(err)
 	}
 
-	if ringTSmall, err = ring.NewRing(params.FVSlots(), []uint64{params.t}); err != nil {
+	if ringTSmall, err = ring.NewRing(params.FVSlots(), []uint64{params.plainModulus}); err != nil {
 		panic(err)
 	}
 
@@ -182,7 +182,7 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 		ringTSmall:        ringTSmall,
 		indexMatrix:       indexMatrix,
 		indexMatrixSmall:  indexMatrixSmall,
-		deltaPMont:        GenLiftParams(ringP, params.t),
+		deltaPMont:        GenLiftParams(ringP, params.plainModulus),
 		multiLevelContext: context,
 		tmpPoly:           ringT.NewPoly(),
 		tmpPtRt:           NewPlaintextRingT(params),
@@ -191,9 +191,9 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 }
 
 // GenLiftParams generates the lifting parameters.
-func GenLiftParams(ringQ *ring.Ring, t uint64) (deltaMont []uint64) {
+func GenLiftParams(ringQ *ring.Ring, plainModulus uint64) (deltaMont []uint64) {
 
-	delta := new(big.Int).Quo(ringQ.ModulusBigint, ring.NewUint(t))
+	delta := new(big.Int).Quo(ringQ.ModulusBigint, ring.NewUint(plainModulus))
 
 	deltaMont = make([]uint64, len(ringQ.Modulus))
 
@@ -304,7 +304,7 @@ func (encoder *mfvEncoder) EncodeIntRingT(coeffs []int64, p *PlaintextRingT) {
 	for i := 0; i < len(coeffs); i++ {
 
 		if coeffs[i] < 0 {
-			p.value.Coeffs[0][encoder.indexMatrix[i]] = uint64(int64(encoder.params.t) + coeffs[i])
+			p.value.Coeffs[0][encoder.indexMatrix[i]] = uint64(int64(encoder.params.plainModulus) + coeffs[i])
 		} else {
 			p.value.Coeffs[0][encoder.indexMatrix[i]] = uint64(coeffs[i])
 		}
@@ -480,7 +480,7 @@ func (encoder *mfvEncoder) DecodeInt(p interface{}, coeffs []int64) {
 
 	encoder.ringT.NTT(encoder.tmpPtRt.value, encoder.tmpPoly)
 
-	modulus := int64(encoder.params.t)
+	modulus := int64(encoder.params.plainModulus)
 	modulusHalf := modulus >> 1
 	var value int64
 	for i := 0; i < encoder.params.N(); i++ {
@@ -606,7 +606,7 @@ func (encoder *mfvEncoder) GenSlotToCoeffMatFV(radix int) (pDcds [][]*PtDiagMatr
 	modCount := len(params.qi)
 	pDcds = make([][]*PtDiagMatrixT, modCount)
 
-	var genDcdFunc func(logSlots int, t uint64) (plainVector []map[int][]uint64)
+	var genDcdFunc func(logSlots int, plainModulus uint64) (plainVector []map[int][]uint64)
 	switch radix {
 	case 0:
 		genDcdFunc = genDcdMatsInOne
@@ -616,7 +616,7 @@ func (encoder *mfvEncoder) GenSlotToCoeffMatFV(radix int) (pDcds [][]*PtDiagMatr
 		genDcdFunc = genDcdMats
 	}
 	for level := 0; level < modCount; level++ {
-		pVecDcd := genDcdFunc(params.logFVSlots, params.t)
+		pVecDcd := genDcdFunc(params.logFVSlots, params.plainModulus)
 		pDcds[level] = make([]*PtDiagMatrixT, len(pVecDcd))
 
 		for i := 0; i < len(pDcds[level]); i++ {
@@ -628,8 +628,8 @@ func (encoder *mfvEncoder) GenSlotToCoeffMatFV(radix int) (pDcds [][]*PtDiagMatr
 }
 
 // genDcdMats generates decoding matrix that is factorized into sparse block diagonal matrices with radix 1
-func genDcdMats(logSlots int, t uint64) (plainVector []map[int][]uint64) {
-	roots := computePrimitiveRoots(1<<(logSlots+1), t)
+func genDcdMats(logSlots int, plainModulus uint64) (plainVector []map[int][]uint64) {
+	roots := computePrimitiveRoots(1<<(logSlots+1), plainModulus)
 	diabMats := genDcdDiabDecomp(logSlots, roots)
 	depth := len(diabMats) - 1
 
@@ -637,50 +637,50 @@ func genDcdMats(logSlots int, t uint64) (plainVector []map[int][]uint64) {
 	for i := 0; i < depth-2; i++ {
 		plainVector[i] = diabMats[i]
 	}
-	plainVector[depth-2] = multDiabMats(diabMats[depth-1], diabMats[depth-2], t)
-	plainVector[depth-1] = multDiabMats(diabMats[depth], diabMats[depth-2], t)
+	plainVector[depth-2] = multDiabMats(diabMats[depth-1], diabMats[depth-2], plainModulus)
+	plainVector[depth-1] = multDiabMats(diabMats[depth], diabMats[depth-2], plainModulus)
 	return
 }
 
 // genDcdMatsRad2 generates decoding matrix that is factorized into sparse block diagonal matrices with radix 2
-func genDcdMatsRad2(logSlots int, t uint64) (plainVector []map[int][]uint64) {
-	roots := computePrimitiveRoots(1<<(logSlots+1), t)
+func genDcdMatsRad2(logSlots int, plainModulus uint64) (plainVector []map[int][]uint64) {
+	roots := computePrimitiveRoots(1<<(logSlots+1), plainModulus)
 	diabMats := genDcdDiabDecomp(logSlots, roots)
 	depth := len(diabMats) - 1
 
 	plainVector = make([]map[int][]uint64, (depth+1)/2+1)
 	if depth%2 == 0 {
 		for i := 0; i < depth-2; i += 2 {
-			plainVector[i/2] = multDiabMats(diabMats[i+1], diabMats[i], t)
+			plainVector[i/2] = multDiabMats(diabMats[i+1], diabMats[i], plainModulus)
 		}
 	} else {
 		plainVector[0] = diabMats[0]
 		for i := 1; i < depth-2; i += 2 {
-			plainVector[(i+1)/2] = multDiabMats(diabMats[i+1], diabMats[i], t)
+			plainVector[(i+1)/2] = multDiabMats(diabMats[i+1], diabMats[i], plainModulus)
 		}
 	}
-	plainVector[(depth-1)/2] = multDiabMats(diabMats[depth-1], diabMats[depth-2], t)
-	plainVector[(depth+1)/2] = multDiabMats(diabMats[depth], diabMats[depth-2], t)
+	plainVector[(depth-1)/2] = multDiabMats(diabMats[depth-1], diabMats[depth-2], plainModulus)
+	plainVector[(depth+1)/2] = multDiabMats(diabMats[depth], diabMats[depth-2], plainModulus)
 	return
 }
 
 // genDcdMatsInOne generates decoding matrix which is not factorized
-func genDcdMatsInOne(logSlots int, t uint64) (plainVector []map[int][]uint64) {
+func genDcdMatsInOne(logSlots int, plainModulus uint64) (plainVector []map[int][]uint64) {
 	if logSlots != 4 {
 		panic("cannot genDcdMatsInOne: logSlots should be 4")
 	}
-	roots := computePrimitiveRoots(1<<(logSlots+1), t)
+	roots := computePrimitiveRoots(1<<(logSlots+1), plainModulus)
 	diabMats := genDcdDiabDecomp(logSlots, roots)
 
 	plainVector = make([]map[int][]uint64, 2)
 	tmp := diabMats[0]
-	tmp = multDiabMats(diabMats[1], tmp, t)
-	plainVector[0] = multDiabMats(diabMats[2], tmp, t)
-	plainVector[1] = multDiabMats(diabMats[3], tmp, t)
+	tmp = multDiabMats(diabMats[1], tmp, plainModulus)
+	plainVector[0] = multDiabMats(diabMats[2], tmp, plainModulus)
+	plainVector[1] = multDiabMats(diabMats[3], tmp, plainModulus)
 	return
 }
 
-func multDiabMats(A map[int][]uint64, B map[int][]uint64, t uint64) (res map[int][]uint64) {
+func multDiabMats(A map[int][]uint64, B map[int][]uint64, plainModulus uint64) (res map[int][]uint64) {
 	res = make(map[int][]uint64)
 
 	for rotA := range A {
@@ -692,13 +692,13 @@ func multDiabMats(A map[int][]uint64, B map[int][]uint64, t uint64) (res map[int
 
 			for i := 0; i < N/2; i++ {
 				res[(rotA+rotB)%(N/2)][i] += A[rotA][i] * B[rotB][(rotA+i)%(N/2)]
-				res[(rotA+rotB)%(N/2)][i] %= t
+				res[(rotA+rotB)%(N/2)][i] %= plainModulus
 
 			}
 
 			for i := N / 2; i < N; i++ {
 				res[(rotA+rotB)%(N/2)][i] += A[rotA][i] * B[rotB][N/2+(rotA+i)%(N/2)]
-				res[(rotA+rotB)%(N/2)][i] %= t
+				res[(rotA+rotB)%(N/2)][i] %= plainModulus
 			}
 		}
 	}
@@ -803,14 +803,14 @@ func genDcdDiabDecomp(logN int, roots []uint64) (res []map[int][]uint64) {
 }
 
 // compute M-th root of unity
-func computePrimitiveRoots(M int, t uint64) (roots []uint64) {
-	g := ring.PrimitiveRoot(t)
-	w := ring.ModExp(g, (int(t)-1)/M, t)
+func computePrimitiveRoots(M int, plainModulus uint64) (roots []uint64) {
+	g := ring.PrimitiveRoot(plainModulus)
+	w := ring.ModExp(g, (int(plainModulus)-1)/M, plainModulus)
 
 	roots = make([]uint64, M)
 	roots[0] = 1
 	for i := 1; i < M; i++ {
-		roots[i] = (roots[i-1] * w) % t
+		roots[i] = (roots[i-1] * w) % plainModulus
 	}
 	return
 }

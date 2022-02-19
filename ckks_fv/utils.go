@@ -9,9 +9,9 @@ import (
 	"github.com/ldsec/lattigo/v2/ring"
 )
 
-// Returns uniform random value in (0,t) by rejection sampling
-func SampleZtx(rand io.Reader, t uint64) (res uint64) {
-	bitLen := bits.Len64(t - 2)
+// Returns uniform random value in (0,q) by rejection sampling
+func SampleZqx(rand io.Reader, q uint64) (res uint64) {
+	bitLen := bits.Len64(q - 2)
 	byteLen := (bitLen + 7) / 8
 	b := bitLen % 8
 	if b == 0 {
@@ -26,12 +26,12 @@ func SampleZtx(rand io.Reader, t uint64) (res uint64) {
 		}
 		bytes[byteLen-1] &= uint8((1 << b) - 1)
 
-		res = 1
+		res = 0
 		for i := 0; i < byteLen; i++ {
 			res += uint64(bytes[i]) << (8 * i)
 		}
 
-		if res < t {
+		if res < q {
 			return
 		}
 	}

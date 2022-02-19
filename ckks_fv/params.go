@@ -188,9 +188,9 @@ var DefaultParams = []*Parameters{
 			0x1ffffeca0001, 0x1ffffeb40001, 0x200001520001, 0x1ffffe760001, 0x2000019a0001,
 			0x1ffffe640001, 0x200001a00001, 0x1ffffe520001, 0x200001e80001, 0x1ffffe0c0001,
 			0x1ffffdee0001, 0x200002480001}, // 55 + 31 x 45
-		pi:    []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
-		t:     0x7fea0001,
-		sigma: DefaultSigma,
+		pi:           []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
+		plainModulus: 0x7fea0001,
+		sigma:        DefaultSigma,
 	},
 
 	// Test parameter for LT() in examples/ckks_fv/main.go
@@ -203,9 +203,9 @@ var DefaultParams = []*Parameters{
 			0x1ffffeca0001, 0x1ffffeb40001, 0x200001520001, 0x1ffffe760001, 0x2000019a0001,
 			0x1ffffe640001, 0x200001a00001, 0x1ffffe520001, 0x200001e80001, 0x1ffffe0c0001,
 			0x1ffffdee0001, 0x200002480001}, // 55 + 31 x 45
-		pi:    []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
-		t:     0x7fea0001,
-		sigma: DefaultSigma,
+		pi:           []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
+		plainModulus: 0x7fea0001,
+		sigma:        DefaultSigma,
 	},
 
 	// Test parameter for fvStC() in examples/ckks_fv/main.go
@@ -218,9 +218,9 @@ var DefaultParams = []*Parameters{
 			0x1ffffeca0001, 0x1ffffeb40001, 0x200001520001, 0x1ffffe760001, 0x2000019a0001,
 			0x1ffffe640001, 0x200001a00001, 0x1ffffe520001, 0x200001e80001, 0x1ffffe0c0001,
 			0x1ffffdee0001, 0x200002480001}, // 55 + 31 x 45
-		pi:    []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
-		t:     65537,
-		sigma: DefaultSigma,
+		pi:           []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
+		plainModulus: 65537,
+		sigma:        DefaultSigma,
 	},
 
 	// Test parameter for fvStC() with full batching in examples/ckks_fv/main.go
@@ -233,9 +233,9 @@ var DefaultParams = []*Parameters{
 			0x1ffffeca0001, 0x1ffffeb40001, 0x200001520001, 0x1ffffe760001, 0x2000019a0001,
 			0x1ffffe640001, 0x200001a00001, 0x1ffffe520001, 0x200001e80001, 0x1ffffe0c0001,
 			0x1ffffdee0001, 0x200002480001}, // 55 + 31 x 45
-		pi:    []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
-		t:     65537,
-		sigma: DefaultSigma,
+		pi:           []uint64{0x7fffffffe0001, 0x80000001c0001, 0x80000002c0001, 0x7ffffffd20001}, // 4 x 51
+		plainModulus: 65537,
+		sigma:        DefaultSigma,
 	},
 }
 
@@ -243,27 +243,27 @@ var DefaultParams = []*Parameters{
 var DefaultFVParams = []*Parameters{
 
 	{
-		logN:       12,
-		logFVSlots: 12,
-		t:          65537,
-		qi:         []uint64{0x7ffffec001, 0x8000016001}, // 39 + 39 bits
-		pi:         []uint64{0x40002001},                 // 30 bits
-		sigma:      DefaultSigma,
+		logN:         12,
+		logFVSlots:   12,
+		plainModulus: 65537,
+		qi:           []uint64{0x7ffffec001, 0x8000016001}, // 39 + 39 bits
+		pi:           []uint64{0x40002001},                 // 30 bits
+		sigma:        DefaultSigma,
 	},
 
 	{
-		logN:       13,
-		logFVSlots: 13,
-		t:          65537,
-		qi:         []uint64{0x3fffffffef8001, 0x4000000011c001, 0x40000000120001}, // 54 + 54 + 54 bits
-		pi:         []uint64{0x7ffffffffb4001},                                     // 55 bits
-		sigma:      DefaultSigma,
+		logN:         13,
+		logFVSlots:   13,
+		plainModulus: 65537,
+		qi:           []uint64{0x3fffffffef8001, 0x4000000011c001, 0x40000000120001}, // 54 + 54 + 54 bits
+		pi:           []uint64{0x7ffffffffb4001},                                     // 55 bits
+		sigma:        DefaultSigma,
 	},
 
 	{
-		logN:       14,
-		logFVSlots: 14,
-		t:          65537,
+		logN:         14,
+		logFVSlots:   14,
+		plainModulus: 65537,
 		qi: []uint64{0x100000000060001, 0x80000000068001, 0x80000000080001,
 			0x3fffffffef8001, 0x40000000120001, 0x3fffffffeb8001}, // 56 + 55 + 55 + 54 + 54 + 54 bits
 		pi:    []uint64{0x80000000130001, 0x7fffffffe90001}, // 55 + 55 bits
@@ -271,9 +271,9 @@ var DefaultFVParams = []*Parameters{
 	},
 
 	{
-		logN:       15,
-		logFVSlots: 15,
-		t:          65537,
+		logN:         15,
+		logFVSlots:   15,
+		plainModulus: 65537,
 		qi: []uint64{0x7ffffffffe70001, 0x7ffffffffe10001, 0x7ffffffffcc0001, // 59 + 59 + 59 bits
 			0x400000000270001, 0x400000000350001, 0x400000000360001, // 58 + 58 + 58 bits
 			0x3ffffffffc10001, 0x3ffffffffbe0001, 0x3ffffffffbd0001, // 58 + 58 + 58 bits
@@ -283,36 +283,36 @@ var DefaultFVParams = []*Parameters{
 	},
 
 	{ // LogQP = 101.00005709794536
-		logN:       12,
-		logFVSlots: 12,
-		t:          65537,
-		qi:         []uint64{0x800004001, 0x800008001}, // 2*35
-		pi:         []uint64{0x80014001},               // 1*31
-		sigma:      DefaultSigma,
+		logN:         12,
+		logFVSlots:   12,
+		plainModulus: 65537,
+		qi:           []uint64{0x800004001, 0x800008001}, // 2*35
+		pi:           []uint64{0x80014001},               // 1*31
+		sigma:        DefaultSigma,
 	},
 
 	{ // LogQP = 201.99999999994753
-		logN:       13,
-		logFVSlots: 13,
-		t:          65537,
-		qi:         []uint64{0x7fffffffe0001, 0x7fffffffcc001, 0x3ffffffffc001}, // 2*51 + 50
-		pi:         []uint64{0x4000000024001},                                   // 50
-		sigma:      DefaultSigma,
+		logN:         13,
+		logFVSlots:   13,
+		plainModulus: 65537,
+		qi:           []uint64{0x7fffffffe0001, 0x7fffffffcc001, 0x3ffffffffc001}, // 2*51 + 50
+		pi:           []uint64{0x4000000024001},                                   // 50
+		sigma:        DefaultSigma,
 	},
 
 	{ // LogQP = 410.9999999999886
-		logN:       14,
-		logFVSlots: 14,
-		t:          65537,
-		qi:         []uint64{0x7fffffffff18001, 0x8000000000f8001, 0x7ffffffffeb8001, 0x800000000158001, 0x7ffffffffe70001}, // 5*59
-		pi:         []uint64{0x7ffffffffe10001, 0x400000000068001},                                                          // 59+58
-		sigma:      DefaultSigma,
+		logN:         14,
+		logFVSlots:   14,
+		plainModulus: 65537,
+		qi:           []uint64{0x7fffffffff18001, 0x8000000000f8001, 0x7ffffffffeb8001, 0x800000000158001, 0x7ffffffffe70001}, // 5*59
+		pi:           []uint64{0x7ffffffffe10001, 0x400000000068001},                                                          // 59+58
+		sigma:        DefaultSigma,
 	},
 
 	{ // LogQP = 826.9999999999509
-		logN:       15,
-		logFVSlots: 15,
-		t:          65537,
+		logN:         15,
+		logFVSlots:   15,
+		plainModulus: 65537,
 		qi: []uint64{0x7ffffffffe70001, 0x7ffffffffe10001, 0x7ffffffffcc0001, 0x7ffffffffba0001, 0x8000000004a0001,
 			0x7ffffffffb00001, 0x800000000890001, 0x8000000009d0001, 0x7ffffffff630001, 0x800000000a70001,
 			0x7ffffffff510001}, // 11*59
@@ -322,9 +322,9 @@ var DefaultFVParams = []*Parameters{
 
 	// Test params for smallBatchMFV
 	{
-		logN:       5,
-		logFVSlots: 4,
-		t:          65537,
+		logN:         5,
+		logFVSlots:   4,
+		plainModulus: 65537,
 		qi: []uint64{0x7ffffffffe70001, 0x7ffffffffe10001, 0x7ffffffffcc0001, // 59 + 59 + 59 bits
 			0x400000000270001, 0x400000000350001, 0x400000000360001, // 58 + 58 + 58 bits
 			0x3ffffffffc10001, 0x3ffffffffbe0001, 0x3ffffffffbd0001, // 58 + 58 + 58 bits
@@ -385,18 +385,18 @@ func (m *LogModuli) Copy() LogModuli {
 
 // Parameters represents a given parameter set for the CKKS cryptosystem.
 type Parameters struct {
-	qi         []uint64
-	pi         []uint64
-	t          uint64
-	logN       int // Ring degree (power of 2)
-	logSlots   int
-	logFVSlots int
-	scale      float64
-	sigma      float64 // Gaussian sampling variance
+	qi           []uint64
+	pi           []uint64
+	plainModulus uint64
+	logN         int // Ring degree (power of 2)
+	logSlots     int
+	logFVSlots   int
+	scale        float64
+	sigma        float64 // Gaussian sampling variance
 }
 
 // NewParametersFromModuli creates a new Parameters struct and returns a pointer to it.
-func NewParametersFromModuli(logN int, m *Moduli, t uint64) (p *Parameters, err error) {
+func NewParametersFromModuli(logN int, m *Moduli, plainModulus uint64) (p *Parameters, err error) {
 	p = new(Parameters)
 
 	if (logN < MinLogN) || (logN > MaxLogN) {
@@ -416,21 +416,21 @@ func NewParametersFromModuli(logN int, m *Moduli, t uint64) (p *Parameters, err 
 
 	p.sigma = DefaultSigma
 
-	p.t = t
+	p.plainModulus = plainModulus
 
 	return p, nil
 
 }
 
 // NewParametersFromLogModuli creates a new Parameters struct and returns a pointer to it.
-func NewParametersFromLogModuli(logN int, lm *LogModuli, t uint64) (p *Parameters, err error) {
+func NewParametersFromLogModuli(logN int, lm *LogModuli, plainModulus uint64) (p *Parameters, err error) {
 
 	if err = checkLogModuli(lm); err != nil {
 		return nil, err
 	}
 
 	// If LogModuli is valid and then generates the moduli
-	return NewParametersFromModuli(logN, genModuli(lm, logN), t)
+	return NewParametersFromModuli(logN, genModuli(lm, logN), plainModulus)
 }
 
 // NewPolyQ returns a new empty polynomial of degree 2^LogN in basis Qi.
@@ -458,9 +458,9 @@ func (p *Parameters) LogN() int {
 	return p.logN
 }
 
-// T returns the plaintext coefficient modulus t
-func (p *Parameters) T() uint64 {
-	return p.t
+// T returns the plaintext coefficient modulus
+func (p *Parameters) PlainModulus() uint64 {
+	return p.plainModulus
 }
 
 // LogSlots returns the log of the number of slots
@@ -513,15 +513,15 @@ func (p *Parameters) Scale() float64 {
 	return p.scale
 }
 
-// SetT sets the plaintext coefficient modulus t
-func (p *Parameters) SetT(T uint64) {
-	p.t = T
+// SetT sets the plaintext coefficient modulus
+func (p *Parameters) SetPlainModulus(plainModulus uint64) {
+	p.plainModulus = plainModulus
 }
 
-// WithT returns a copy of the parmaters with a plaintext modulus set to T
-func (p *Parameters) WithT(T uint64) (pCopy *Parameters) {
+// WithT returns a copy of the parmaters with a plaintext modulus set to plainModulus
+func (p *Parameters) WithPlainModulus(plainModulus uint64) (pCopy *Parameters) {
 	pCopy = p.Copy()
-	pCopy.SetT(T)
+	pCopy.SetPlainModulus(plainModulus)
 	return
 }
 
@@ -754,7 +754,7 @@ func (p *Parameters) Copy() (paramsCopy *Parameters) {
 
 	paramsCopy = new(Parameters)
 	paramsCopy.logN = p.logN
-	paramsCopy.t = p.t
+	paramsCopy.plainModulus = p.plainModulus
 	paramsCopy.logSlots = p.logSlots
 	paramsCopy.logFVSlots = p.logFVSlots
 	paramsCopy.scale = p.scale
@@ -774,7 +774,7 @@ func (p *Parameters) Equals(other *Parameters) (res bool) {
 	}
 
 	res = p.logN == other.logN
-	res = res && (p.t == other.t)
+	res = res && (p.plainModulus == other.plainModulus)
 	res = res && (p.logSlots == other.logSlots)
 	res = res && (p.scale == other.scale)
 	res = res && (p.sigma == other.sigma)
@@ -801,7 +801,7 @@ func (p *Parameters) MarshalBinary() ([]byte, error) {
 
 	b.WriteUint8(uint8(p.logN))
 	b.WriteUint8(uint8(p.logSlots))
-	b.WriteUint64(p.t)
+	b.WriteUint64(p.plainModulus)
 	b.WriteUint64(math.Float64bits(p.scale))
 	b.WriteUint64(math.Float64bits(p.sigma))
 	b.WriteUint8(uint8(p.QiCount()))
@@ -833,7 +833,7 @@ func (p *Parameters) UnmarshalBinary(data []byte) (err error) {
 		return fmt.Errorf("LogSlots larger than %d", MaxLogN-1)
 	}
 
-	p.t = uint64(b.ReadUint64())
+	p.plainModulus = uint64(b.ReadUint64())
 
 	p.scale = math.Float64frombits(b.ReadUint64())
 	p.sigma = math.Float64frombits(b.ReadUint64())

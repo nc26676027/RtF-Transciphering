@@ -12,11 +12,11 @@ type MFVNoiseEstimator interface {
 }
 
 type mfvNoiseEstimator struct {
-	params *Parameters
-	sk     *SecretKey
-	ringQs []*ring.Ring
-	t      uint64
-	qHalfs []*big.Int // (q+1)/2
+	params       *Parameters
+	sk           *SecretKey
+	ringQs       []*ring.Ring
+	plainModulus uint64
+	qHalfs       []*big.Int // (q+1)/2
 
 	qib   [][]uint64   // (Q/Qi)^-1 (mod each Qi)
 	qispj [][]*big.Int // Q/Qi (mod Q)
@@ -78,11 +78,11 @@ func NewMFVNoiseEstimator(params *Parameters, sk *SecretKey) MFVNoiseEstimator {
 	bigintpool := [4]*big.Int{new(big.Int), new(big.Int), new(big.Int), new(big.Int)}
 
 	return &mfvNoiseEstimator{
-		params: params.Copy(),
-		sk:     sk,
-		ringQs: ringQs,
-		t:      params.T(),
-		qHalfs: qHalfs,
+		params:       params.Copy(),
+		sk:           sk,
+		ringQs:       ringQs,
+		plainModulus: params.PlainModulus(),
+		qHalfs:       qHalfs,
 
 		qib:   qib,
 		qispj: qispj,
@@ -125,7 +125,7 @@ func (mfvNoiseEstimator *mfvNoiseEstimator) InvariantNoiseBudget(ciphertext *Cip
 	ringQ.InvNTT(pool0Q, pool0Q)
 
 	// Step 2. Multiply by t
-	ringQ.MulScalar(pool0Q, mfvNoiseEstimator.t, pool0Q)
+	ringQ.MulScalar(pool0Q, mfvNoiseEstimator.plainModulus, pool0Q)
 
 	// Step 3. CRT compose
 	for i := 0; i < N; i++ {

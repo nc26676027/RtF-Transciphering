@@ -112,7 +112,7 @@ func newCKKSEncoder(params *Parameters) ckksEncoder {
 	}
 
 	var ringT *ring.Ring
-	if ringT, err = ring.NewRing(params.N(), []uint64{params.t}); err != nil {
+	if ringT, err = ring.NewRing(params.N(), []uint64{params.plainModulus}); err != nil {
 		panic(err)
 	}
 

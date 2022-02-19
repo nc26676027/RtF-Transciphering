@@ -14,7 +14,7 @@ type HalfBootParameters struct {
 	CoeffsToSlotsModuli
 	LogN         int
 	LogSlots     int
-	t            uint64
+	PlainModulus uint64
 	Scale        float64
 	Sigma        float64
 	H            int     // Hamming weight of the secret key
@@ -33,7 +33,7 @@ func (hb *HalfBootParameters) Params() (p *Parameters, err error) {
 	Qi = append(Qi, hb.SineEvalModuli.Qi...)
 	Qi = append(Qi, hb.CoeffsToSlotsModuli.Qi...)
 
-	if p, err = NewParametersFromModuli(hb.LogN, &Moduli{Qi, hb.KeySwitchModuli}, hb.t); err != nil {
+	if p, err = NewParametersFromModuli(hb.LogN, &Moduli{Qi, hb.KeySwitchModuli}, hb.PlainModulus); err != nil {
 		return nil, err
 	}
 
@@ -48,7 +48,7 @@ func (hb *HalfBootParameters) Copy() *HalfBootParameters {
 	paramsCopy := &HalfBootParameters{
 		LogN:         hb.LogN,
 		LogSlots:     hb.LogSlots,
-		t:            hb.t,
+		PlainModulus: hb.PlainModulus,
 		Scale:        hb.Scale,
 		Sigma:        hb.Sigma,
 		H:            hb.H,
