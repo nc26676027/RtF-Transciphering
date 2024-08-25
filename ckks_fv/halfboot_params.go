@@ -29,7 +29,9 @@ type HalfBootParameters struct {
 
 // Params generates a new set of Parameters from the HalfBootParameters
 func (hb *HalfBootParameters) Params() (p *Parameters, err error) {
-	Qi := append(hb.ResidualModuli, hb.DiffScaleModulus...)
+	// Qi := append(hb.ResidualModuli, hb.DiffScaleModulus...)
+	//Chao added
+	Qi := append(hb.ResidualModuli, hb.DiffScaleModulus.Qi...)
 	Qi = append(Qi, hb.SineEvalModuli.Qi...)
 	Qi = append(Qi, hb.CoeffsToSlotsModuli.Qi...)
 
@@ -85,18 +87,27 @@ func (hb *HalfBootParameters) Copy() *HalfBootParameters {
 	paramsCopy.SineEvalModuli.ScalingFactor = hb.SineEvalModuli.ScalingFactor
 
 	// DiffScaelModulus
-	paramsCopy.DiffScaleModulus = make([]uint64, 1)
-	copy(paramsCopy.DiffScaleModulus, hb.DiffScaleModulus)
+	// paramsCopy.DiffScaleModulus = make([]uint64, 1)
+	// copy(paramsCopy.DiffScaleModulus, hb.DiffScaleModulus)
+
+	// Chao added
+	paramsCopy.DiffScaleModulus.Qi = make([]uint64, len(hb.DiffScaleModulus.Qi))
+	copy(paramsCopy.DiffScaleModulus.Qi, hb.DiffScaleModulus.Qi)
+	paramsCopy.DiffScaleModulus.ScalingFactor = hb.DiffScaleModulus.ScalingFactor
 
 	return paramsCopy
 }
 
 // DiffScaleModulus is used to set scale after the SineEval step.
-type DiffScaleModulus []uint64
+// type DiffScaleModulus []uint64
+// Chao added
+type DiffScaleModulus SlotsToCoeffsModuli
 
 // MaxLevel returns the maximum level of the halfboot parameters
 func (hb *HalfBootParameters) MaxLevel() int {
-	return len(hb.ResidualModuli) + len(hb.DiffScaleModulus) + len(hb.CoeffsToSlotsModuli.Qi) + len(hb.SineEvalModuli.Qi) - 1
+	// return len(hb.ResidualModuli) + len(hb.DiffScaleModulus) + len(hb.CoeffsToSlotsModuli.Qi) + len(hb.SineEvalModuli.Qi) - 1
+	//Chao added
+	return len(hb.ResidualModuli) + len(hb.DiffScaleModulus.Qi) + len(hb.CoeffsToSlotsModuli.Qi) + len(hb.SineEvalModuli.Qi) - 1
 }
 
 // SineEvalDepth returns the depth of the SineEval. If true, then also

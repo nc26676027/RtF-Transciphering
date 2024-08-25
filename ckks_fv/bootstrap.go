@@ -63,16 +63,17 @@ func (btp *Bootstrapper) Bootstrapp(ct *Ciphertext) *Ciphertext {
 	//t = time.Now()
 	ct0, ct1 = CoeffsToSlots(ct, btp.pDFTInv, btp.ckksEvaluator)
 	//log.Println("After CtS    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
-
+	// fmt.Println("after CoeffsToSlots scale : ", math.Log2( ct0.Scale() ))
 	// Part 2 : SineEval
 	//t = time.Now()
 	ct0, ct1 = btp.evaluateSine(ct0, ct1)
 	//log.Println("After Sine   :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
+	// fmt.Println("after evaluateSine scale : ", math.Log2( ct0.Scale() ))
 
 	// Part 3 : Slots to coeffs
 	//t = time.Now()
 	ct0 = SlotsToCoeffs(ct0, ct1, btp.pDFT, btp.ckksEvaluator)
-
+	// fmt.Println("after SlotsToCoeffs scale : ", math.Log2( ct0.Scale() ))
 	ct0.SetScale(math.Exp2(math.Round(math.Log2(ct0.Scale())))) // rounds to the nearest power of two
 	//log.Println("After StC    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 	return ct0
@@ -148,7 +149,7 @@ func CoeffsToSlots(vec *Ciphertext, pDFTInv []*PtDiagMatrix, eval CKKSEvaluator)
 	ct1 = eval.SubNew(zV, zVconj)
 
 	eval.DivByi(ct1, ct1)
-
+	// fmt.Println("C2S parmas LogSlots: ", eval.(*ckksEvaluator).params.LogSlots())
 	// If repacking, then ct0 and ct1 right n/2 slots are zero.
 	if eval.(*ckksEvaluator).params.LogSlots() < eval.(*ckksEvaluator).params.LogN()-1 {
 		eval.Rotate(ct1, eval.(*ckksEvaluator).params.Slots(), ct1)
@@ -177,6 +178,7 @@ func SlotsToCoeffs(ct0, ct1 *Ciphertext, pDFT []*PtDiagMatrix, eval CKKSEvaluato
 
 func dft(vec *Ciphertext, plainVectors []*PtDiagMatrix, forward bool, eval CKKSEvaluator) *Ciphertext {
 
+	// fmt.Println("scale before dft: ", math.Log2(vec.Scale()))
 	// Sequentially multiplies w with the provided dft matrices.
 	for _, plainVector := range plainVectors {
 		scale := vec.Scale()
@@ -185,7 +187,7 @@ func dft(vec *Ciphertext, plainVectors []*PtDiagMatrix, forward bool, eval CKKSE
 			panic(err)
 		}
 	}
-
+	// fmt.Println("scale after dft: ", math.Log2(vec.Scale()))
 	return vec
 }
 
@@ -204,7 +206,7 @@ func (btp *Bootstrapper) evaluateSine(ct0, ct1 *Ciphertext) (*Ciphertext, *Ciphe
 		ct1 = btp.evaluateCheby(ct1)
 		ct1.DivScale(btp.MessageRatio * btp.postscale / btp.params.scale)
 	}
-
+	// fmt.Println("scale after sine,: ", math.Log2( ct0.Scale() ) )
 	// Reference scale is changed back to the current ciphertext's scale.
 	btp.ckksEvaluator.scale = ct0.Scale()
 

@@ -56,7 +56,7 @@ func MRedParams(q uint64) (qInv uint64) {
 	return
 }
 
-// MRed computes x * y * (1/2^64) mod q.
+// MRed computes x * y * (1/2^64) mod q. // three 64bit mult
 func MRed(x, y, q, qInv uint64) (r uint64) {
 	mhi, mlo := bits.Mul64(x, y)
 	hhi, _ := bits.Mul64(mlo*qInv, q)

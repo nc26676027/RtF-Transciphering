@@ -99,6 +99,7 @@ func (hera *mfvHera) Reset(nbInitModDown int) {
 // Compute Round Constants
 func (hera *mfvHera) init(nonce [][]byte) {
 	slots := hera.slots
+	//Each slot stores the random sampled nounce.
 	for i := 0; i < slots; i++ {
 		hera.xof[i] = sha3.NewShake256()
 		hera.xof[i].Write(nonce[i])

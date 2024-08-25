@@ -791,7 +791,6 @@ func (eval *ckksEvaluator) MultByConst(ct0 *Ciphertext, constant interface{}, ct
 	var level = utils.MinInt(ct0.Level(), ctOut.Level())
 
 	cReal, cImag, scale := eval.getConstAndScale(level, constant)
-
 	// Component wise multiplication of the following vector with the ciphertext:
 	// [a + b*psi_qi^2, ....., a + b*psi_qi^2, a - b*psi_qi^2, ...., a - b*psi_qi^2] mod Qi
 	// [{                  N/2                }{                N/2               }]

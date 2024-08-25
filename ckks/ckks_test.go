@@ -510,7 +510,7 @@ func testEvaluatorRescale(testContext *testParams, t *testing.T) {
 		if testContext.params.PiCount() == 0 {
 			t.Skip("#Pi is empty")
 		}
-
+		
 		values, _, ciphertext := newTestVectors(testContext, testContext.encryptorSk, complex(-1, -1), complex(1, 1), t)
 
 		constant := testContext.ringQ.Modulus[ciphertext.Level()]

@@ -1,8 +1,8 @@
 package ckks_fv
 
 /* ModDown Parameters*/
-// ModDownParams denotes optimized modulus switching indices for given RtF parameters
-// (See github.com/smilecjf/lattigo/v2/examples/ckks_fv/main for an example)
+// ModDownParams denotes optimized modulus switching indices e)for given RtF parameters
+// (See github.com/smilecjf/lattigo/v2/examples/ckks_fv/main for an exampl
 // StcModDownParams assumes that the decoding matrix is factorized with radix 2.
 
 type ModDownParams struct {
@@ -43,7 +43,7 @@ var HeraModDownParams128 = []ModDownParams{
 	},
 	{
 		// with RtF param 128s and radix 0
-		CipherModDown: []int{9, 2, 3, 3, 3, 2},
+		CipherModDown: []int{2, 2, 3, 3, 3, 2},
 		StCModDown:    []int{1},
 	},
 	{
@@ -61,33 +61,33 @@ var HeraModDownParams128 = []ModDownParams{
 var RubatoModDownParams = []ModDownParams{
 	{
 		// Rubato80S with RtF param 128af and radix 2
-		CipherModDown: []int{12, 0, 1},
+		CipherModDown: []int{5, 0, 1},
 		StCModDown:    []int{1, 0, 2, 0, 1, 1, 1, 1},
 	},
 	{
 
 		// Rubato80M with RtF param 128af and radix 2
-		CipherModDown: []int{13, 0, 1},
+		CipherModDown: []int{6, 0, 1},
 		StCModDown:    []int{2, 0, 1, 1, 0, 1, 1, 1},
 	},
 	{
 		// Rubato80L with RtF param 128af and radix 2
-		CipherModDown: []int{13, 0, 1},
+		CipherModDown: []int{6, 0, 1},
 		StCModDown:    []int{2, 0, 1, 1, 0, 1, 1, 1},
 	},
 	{
 		// Rubato128S with RtF param 128af and radix 2
-		CipherModDown: []int{10, 0, 1, 1, 1, 1},
+		CipherModDown: []int{3, 0, 1, 1, 1, 1},
 		StCModDown:    []int{1, 1, 1, 0, 1, 1, 1, 0},
 	},
 	{
 		// Rubato128M with RtF param 128af and radix 2
-		CipherModDown: []int{12, 0, 1, 1},
+		CipherModDown: []int{5, 0, 1, 1},
 		StCModDown:    []int{2, 0, 1, 1, 0, 1, 1, 1},
 	},
 	{
 		// Rubato128L with RtF param 128af and radix 2
-		CipherModDown: []int{13, 0, 1},
+		CipherModDown: []int{6, 0, 1},
 		StCModDown:    []int{2, 0, 1, 1, 0, 1, 1, 1},
 	},
 }
@@ -96,27 +96,27 @@ var RubatoModDownParams = []ModDownParams{
 var RubatoModDownParams80S = []ModDownParams{
 	{
 		// Rubato80S with RtF param 128af and radix 1
-		CipherModDown: []int{9, 0, 1},
+		CipherModDown: []int{2, 0, 1},
 		StCModDown:    []int{1, 0, 1, 1, 0, 1, 0, 2, 0, 1, 1, 1, 1, 1},
 	},
 	{
 		// Rubato80S with RtF param 128af and radix 2
-		CipherModDown: []int{12, 0, 1},
+		CipherModDown: []int{2, 0, 1},
 		StCModDown:    []int{1, 0, 2, 0, 1, 1, 1, 1},
 	},
 	{
 		// Rubato80S with RtF param 128as and radix 0
-		CipherModDown: []int{18, 0, 1},
+		CipherModDown: []int{2, 0, 1},
 		StCModDown:    []int{1},
 	},
 	{
 		// Rubato80S with RtF param 128as and radix 1
-		CipherModDown: []int{18, 0, 1},
+		CipherModDown: []int{2, 0, 1},
 		StCModDown:    []int{2, 0},
 	},
 	{
 		// Rubato80S with RtF param 128as and radix 2
-		CipherModDown: []int{18, 0, 1},
+		CipherModDown: []int{2, 0, 1},
 		StCModDown:    []int{1, 1},
 	},
 }
@@ -266,12 +266,190 @@ var RubatoModDownParams128L = []ModDownParams{
 	},
 }
 
+var PastaModDownParams = []ModDownParams{
+	{
+		// Pasta3S with RtF param 128f and radix 2
+		CipherModDown: []int{8, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		//  Pasta3M with RtF param 128af and radix 2
+		CipherModDown: []int{8, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// Pasta3L with RtF param 128af and radix 2
+		CipherModDown: []int{8, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	// ************************
+	{
+		// Pasta4S with RtF param 128af and radix 2
+		CipherModDown: []int{6, 1, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 0, 0},
+	},
+	{
+		// Pasta4M with RtF param 128af and radix 2
+		CipherModDown: []int{6, 1, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// Pasta4L with RtF param 128af and radix 2
+		CipherModDown: []int{6, 1, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 0, 0},
+	},
+	// ************************
+	{
+		// Pasta5S with RtF param 128af and radix 2
+		CipherModDown: []int{7, 1, 1, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// Pasta5M with RtF param 128af and radix 2
+		CipherModDown: []int{7, 1, 1, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// Pasta5L with RtF param 128af and radix 2
+		CipherModDown: []int{7, 1, 1, 1, 1, 2},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+}
+
+var MastaModDownParams = []ModDownParams{
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{7, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 1, 0, 1, 1, 1, 1, 1},
+	},
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{7, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{7, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	// ********************************
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{6, 1, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{6, 1, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{6, 1, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+	// ********************************
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{5, 1, 1, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 1, 0, 1, 1, 1, 1, 1},
+	},
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{5, 1, 1, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+
+	{
+		// Masta with RtF param 128af and radix 2
+		CipherModDown: []int{5, 1, 1, 1, 1, 1, 1, 1},
+		StCModDown:    []int{1, 0, 1, 1, 1, 1, 1, 1},
+	},
+}
+
 var RtFHeraParams = []*HalfBootParameters{
+	// resnet parameter
+	// SET RESNET
+	// // 1532
+	// {
+	// 	LogN:     12,
+	// 	LogSlots: 11,
+	// 	Scale:    1 << 40,
+	// 	PlainModulus:  268042241, // 17bit
+	// 	Sigma:    DefaultSigma,
+	// 	ResidualModuli: []uint64{
+	// 		0xffffffffffc0001,
+	// 		0x10000140001,
+	// 		0xffffe80001,
+	// 		0xffffc40001,
+	// 		0x100003e0001,
+	// 		0x10000500001,
+	// 		0xffffb20001,
+	// 		0xffff940001,
+	// 		0xffff8a0001,
+	// 		0xffff820001,
+	// 	},
+	// 	KeySwitchModuli: []uint64{
+	// 		0x10000000006e0001,
+	// 		0xfffffffff840001,
+	// 		0x1000000000860001,
+	// 		0x1000000000980001,
+	// 		0xfffffffff6a0001,
+	// 	},
+	// 	DiffScaleModulus: DiffScaleModulus(SlotsToCoeffsModuli{
+	// 		Qi: []uint64{
+	// 			0x400000000360001,
+	// 			0x3ffffffffbe0001,
+	// 			0x400000000660001,
+	// 		},
+	// 		ScalingFactor: [][]float64{
+	// 			{0x400000000360001},
+	// 			{0x3ffffffffbe0001},
+	// 			{0x400000000660001},
+	// 		},
+	// 	}),
+
+	// 	SineEvalModuli: SineEvalModuli{
+	// 		Qi: []uint64{
+	// 			0x4000000008a0001,
+	// 			0x400000000920001,
+	// 			0x400000000980001,
+	// 			0x400000000a40001,
+	// 			0x400000000c00001,
+	// 			0x3ffffffff3a0001,
+	// 			0x400000000ea0001,
+	// 			0x3ffffffff040001,
+	// 		},
+	// 		ScalingFactor: 1 << 58,
+	// 	},
+	// 	CoeffsToSlotsModuli: CoeffsToSlotsModuli{
+	// 		Qi: []uint64{
+	// 			0x3fffffffed60001,
+	// 			0x3fffffffed00001,
+	// 			0x400000001460001,
+	// 		},
+	// 		ScalingFactor: [][]float64{
+	// 			{0x3fffffffed60001},
+	// 			{0x3fffffffed00001},
+	// 			{0x400000001460001},
+	// 		},
+	// 	},
+	// 	H:            192,
+	// 	SinType:      Cos1,
+	// 	MessageRatio: 512.0,
+	// 	SinRange:     25,
+	// 	SinDeg:       59,
+	// 	SinRescal:    2,
+	// 	ArcSineDeg:   0,
+	// 	MaxN1N2Ratio: 16.0,
+	// },
+
+
 	// 128f
 	// Use full coefficients for data encoding
 	{
-		LogN:         16,
-		LogSlots:     15,
+		LogN:         12,
+		LogSlots:     11,
 		Scale:        1 << 40,
 		PlainModulus: 268042241, // 28-bit
 		Sigma:        DefaultSigma,
@@ -296,9 +474,15 @@ var RtFHeraParams = []*HalfBootParameters{
 			0x1fffffffff500001, // Pi 61
 			0x1fffffffff420001, // Pi 61
 		},
-		DiffScaleModulus: []uint64{
-			0xfc0001, // 24
-		},
+		DiffScaleModulus: DiffScaleModulus(SlotsToCoeffsModuli{
+			Qi: []uint64{
+				0xfc0001,
+			},
+			ScalingFactor: [][]float64{
+				{0xfc0001},
+			},
+		}),
+
 		SineEvalModuli: SineEvalModuli{
 			Qi: []uint64{
 				0xfffffffff840001,  // 60 Sine (double angle)
@@ -328,7 +512,7 @@ var RtFHeraParams = []*HalfBootParameters{
 		},
 		H:            192,
 		SinType:      Cos1,
-		MessageRatio: 512.0,
+		MessageRatio: 16.0,
 		SinRange:     25,
 		SinDeg:       63,
 		SinRescal:    2,
@@ -365,9 +549,15 @@ var RtFHeraParams = []*HalfBootParameters{
 			0x1fffffffff500001, // Pi 61
 			0x1fffffffff420001, // Pi 61
 		},
-		DiffScaleModulus: []uint64{
-			0xfc0001, // 24
-		},
+		DiffScaleModulus: DiffScaleModulus(SlotsToCoeffsModuli{
+			Qi: []uint64{
+				0xfc0001,
+			},
+			ScalingFactor: [][]float64{
+				{0xfc0001},
+			},
+		}),
+
 		SineEvalModuli: SineEvalModuli{
 			Qi: []uint64{
 				0xfffffffff840001,  // 60 Sine (double angle)
@@ -430,9 +620,15 @@ var RtFHeraParams = []*HalfBootParameters{
 			0x1fffffffffb40001, // Pi 61
 			0x1fffffffff500001, // Pi 61
 		},
-		DiffScaleModulus: []uint64{
-			0x2a0001, // 22
-		},
+		DiffScaleModulus: DiffScaleModulus(SlotsToCoeffsModuli{
+			Qi: []uint64{
+				0x2a0001,
+			},
+			ScalingFactor: [][]float64{
+				{0x2a0001},
+			},
+		}),
+
 		SineEvalModuli: SineEvalModuli{
 			Qi: []uint64{
 				0xffffffffffc0001,  // ArcSine
@@ -498,9 +694,15 @@ var RtFHeraParams = []*HalfBootParameters{
 			0x1fffffffffb40001, // Pi 61
 			0x1fffffffff500001, // Pi 61
 		},
-		DiffScaleModulus: []uint64{
-			0x2a0001, // 22
-		},
+		DiffScaleModulus: DiffScaleModulus(SlotsToCoeffsModuli{
+			Qi: []uint64{
+				0x2a0001,
+			},
+			ScalingFactor: [][]float64{
+				{0x2a0001},
+			},
+		}),
+
 		SineEvalModuli: SineEvalModuli{
 			Qi: []uint64{
 				0xffffffffffc0001,  // ArcSine
@@ -567,9 +769,15 @@ var RtFRubatoParams = []*HalfBootParameters{
 			0x1fffffffffb40001, // Pi 61
 			0x1fffffffff500001, // Pi 61
 		},
-		DiffScaleModulus: []uint64{
-			0x2a0001, // 22
-		},
+		DiffScaleModulus: DiffScaleModulus(SlotsToCoeffsModuli{
+			Qi: []uint64{
+				0x2a0001,
+			},
+			ScalingFactor: [][]float64{
+				{0x2a0001},
+			},
+		}),
+
 		SineEvalModuli: SineEvalModuli{
 			Qi: []uint64{
 				0xffffffffffc0001,  // ArcSine

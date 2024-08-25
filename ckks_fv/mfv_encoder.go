@@ -126,11 +126,9 @@ func NewMFVEncoder(params *Parameters) MFVEncoder {
 	if ringP, err = ring.NewRing(params.N(), params.pi); err != nil {
 		panic(err)
 	}
-
 	if ringT, err = ring.NewRing(params.N(), []uint64{params.plainModulus}); err != nil {
 		panic(err)
 	}
-
 	if ringTSmall, err = ring.NewRing(params.FVSlots(), []uint64{params.plainModulus}); err != nil {
 		panic(err)
 	}

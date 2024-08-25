@@ -121,6 +121,10 @@ func (hbtp *HalfBootstrapper) genDFTMatrices() {
 	hbtp.coeffsToSlotsDiffScale = complex(math.Pow(2.0/((b-a)*n*hbtp.scFac*qDiff), 1.0/float64(hbtp.CtSDepth(false))), 0)
 
 	// Rescaling factor to set the final ciphertext to the desired scale
+	// hbtp.diffScaleAfterSineEval = (qDiff * hbtp.params.scale) / hbtp.postscale
+	// Chao added
+	// LevelAfterSine := len(hbtp.ResidualModuli)
+	// ScaleAfterSine := hbtp.params.qi[LevelAfterSine]
 	hbtp.diffScaleAfterSineEval = (qDiff * hbtp.params.scale) / hbtp.postscale
 
 	// CoeffsToSlotsWithoutRepack vectors

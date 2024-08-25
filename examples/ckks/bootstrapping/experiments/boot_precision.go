@@ -60,6 +60,7 @@ func main() {
 		encoder, encryptor, evaluator, decryptor, bootstrapper := instanciateExperiment(params, btpParams)
 		log.Println("Generating a plaintext of", params.Slots(), "random values...")
 		values := make([]complex128, params.Slots())
+		fmt.Println("\n\nSlots: ", params.Slots())
 		for i := range values {
 			values[i] = complex(randomFloat(-1, 1), randomFloat(-1, 1))
 		}
@@ -90,6 +91,7 @@ func main() {
 		stats = make([]ckks.PrecisionStats, 1, 1) // Experiment seems stable enough
 		for i := range stats {
 			values := make([]complex128, params.Slots())
+			fmt.Println("\n\nSlots: ", params.Slots())
 			for i := range values {
 				values[i] = complex(randomFloat(-1, 1), randomFloat(-1, 1))
 			}
@@ -117,6 +119,7 @@ func main() {
 			encoder, encryptor, _, decryptor, bootstrapper := instanciateExperiment(params, btpParams)
 
 			values := make([]complex128, params.Slots())
+			fmt.Println("\n\nSlots: ", params.Slots())
 			for j := range values {
 				values[j] = complex(randomFloat(-1, 1), randomFloat(-1, 1))
 			}

@@ -72,9 +72,13 @@ func newBootstrapper(params *Parameters, btpParams *BootstrappingParameters) (bt
 	btp.params = params.Copy()
 	btp.BootstrappingParameters = *btpParams.Copy()
 
-	btp.dslots = params.Slots()
-	btp.logdslots = params.LogSlots()
-	if params.logSlots < params.MaxLogSlots() {
+	// btp.dslots = params.Slots()
+	// btp.logdslots = params.LogSlots()
+	btp.dslots = 1<<btpParams.LogSlots
+	btp.logdslots = btpParams.LogSlots
+	// fmt.Println("logdslots: ", btp.logdslots)
+	// if params.logSlots < params.MaxLogSlots() {
+	if btpParams.LogSlots < params.MaxLogSlots() {
 		btp.dslots <<= 1
 		btp.logdslots++
 	}
@@ -177,6 +181,46 @@ func (btp *Bootstrapper) genDFTMatrices() {
 
 	// SlotsToCoeffs vectors
 	btp.pDFT = btp.BootstrappingParameters.GenSlotsToCoeffsMatrix(btp.slotsToCoeffsDiffScale, btp.encoder)
+
+	// List of the rotation key values to needed for the bootstrapp
+	btp.rotKeyIndex = []int{}
+
+	//SubSum rotation needed X -> Y^slots rotations
+	for i := btp.params.logSlots; i < btp.params.MaxLogSlots(); i++ {
+		if !utils.IsInSliceInt(1<<i, btp.rotKeyIndex) {
+			btp.rotKeyIndex = append(btp.rotKeyIndex, 1<<i)
+		}
+	}
+
+	// Coeffs to Slots rotations
+	for _, pVec := range btp.pDFTInv {
+		btp.rotKeyIndex = AddMatrixRotToList(pVec, btp.rotKeyIndex, btp.params.Slots(), false)
+	}
+
+	// Slots to Coeffs rotations
+	for i, pVec := range btp.pDFT {
+		btp.rotKeyIndex = AddMatrixRotToList(pVec, btp.rotKeyIndex, btp.params.Slots(), (i == 0) && (btp.params.logSlots < btp.params.MaxLogSlots()))
+	}
+}
+
+func (btp *Bootstrapper) genDFTMatricesHalf() {
+
+	a := real(btp.sineEvalPoly.a)
+	b := real(btp.sineEvalPoly.b)
+	n := float64(btp.params.N())
+	qDiff := float64(btp.params.qi[0]) / math.Exp2(math.Round(math.Log2(float64(btp.params.qi[0]))))
+
+	// Change of variable for the evaluation of the Chebyshev polynomial + cancelling factor for the DFT and SubSum + evantual scaling factor for the double angle formula
+	btp.coeffsToSlotsDiffScale = complex(math.Pow(2.0/((b-a)*n*btp.scFac*qDiff), 1.0/float64(btp.CtSDepth(false))), 0)
+
+	// Rescaling factor to set the final ciphertext to the desired scale
+	btp.slotsToCoeffsDiffScale = complex( math.Pow((qDiff*btp.params.scale)/btp.postscale, 1.0/float64(btp.StCDepth(false))), 0 )
+
+	// CoeffsToSlots vectors
+	btp.pDFTInv = btp.BootstrappingParameters.GenCoeffsToSlotsMatrix(btp.coeffsToSlotsDiffScale, btp.encoder)
+
+	// SlotsToCoeffs vectors
+	btp.pDFT = btp.BootstrappingParameters.GenSlotsToCoeffsMatrixHalf(btp.slotsToCoeffsDiffScale, btp.encoder)
 
 	// List of the rotation key values to needed for the bootstrapp
 	btp.rotKeyIndex = []int{}

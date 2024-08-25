@@ -77,6 +77,7 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext, repack bool) (ct0, ct1 *C
 	}
 	//log.Println("After Sine   :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 
+	// fmt.Println("Scale after evaluate Sine, : ", math.Log2( ct0.Scale() ))
 	// Part 3 : Fix scale using diffScaleAfterEvalSine
 	hbtp.ckksEvaluator.MultByConst(ct0, hbtp.diffScaleAfterSineEval, ct0)
 	if err := hbtp.ckksEvaluator.RescaleMany(ct0, 1, ct0); err != nil {
@@ -84,6 +85,9 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext, repack bool) (ct0, ct1 *C
 	}
 	// Rounds to the nearest power of two
 	ct0.SetScale(math.Exp2(math.Round(math.Log2(ct0.Scale()))))
+	for ct0.Level()-len( hbtp.ResidualModuli )+1 > 0 {
+		hbtp.ckksEvaluator.DropLevel(ct0, 1)
+	}
 
 	if ct1 != nil {
 		hbtp.ckksEvaluator.MultByConst(ct1, hbtp.diffScaleAfterSineEval, ct1)
@@ -92,7 +96,12 @@ func (hbtp *HalfBootstrapper) HalfBoot(ct *Ciphertext, repack bool) (ct0, ct1 *C
 		}
 		// Rounds to the nearest power of two
 		ct1.SetScale(math.Exp2(math.Round(math.Log2(ct1.Scale()))))
+		for ct1.Level()-len( hbtp.ResidualModuli )+1 > 0 {
+			hbtp.ckksEvaluator.DropLevel(ct1, 1)
+		}
+	
 	}
+
 
 	return ct0, ct1
 }
@@ -181,7 +190,8 @@ func (hbtp *HalfBootstrapper) evaluateSine(ct0, ct1 *Ciphertext) (*Ciphertext, *
 	hbtp.ckksEvaluator.scale = hbtp.sinescale // Reference scale is changed to the Qi used for the SineEval (which is also close to the new ciphetext scale)
 
 	ct0 = hbtp.evaluateCheby(ct0)
-
+	// fmt.Println("Scale after Sine, before final scale, : \n", math.Log2( ct0.Scale() ))
+	// fmt.Println("hbtp.MessageRatio , hbtp.postscale , hbtp.params.scale  \n", math.Log2( hbtp.MessageRatio ),math.Log2(  hbtp.postscale ), math.Log2( hbtp.params.scale ) )
 	ct0.DivScale(hbtp.MessageRatio * hbtp.postscale / hbtp.params.scale)
 
 	if ct1 != nil {
@@ -189,12 +199,13 @@ func (hbtp *HalfBootstrapper) evaluateSine(ct0, ct1 *Ciphertext) (*Ciphertext, *
 		ct1 = hbtp.evaluateCheby(ct1)
 		ct1.DivScale(hbtp.MessageRatio * hbtp.postscale / hbtp.params.scale)
 	}
-
-	// Reference scale is changed back to the current ciphertext's scale.
+	// fmt.Println("Scale after Sine, after final scale, : \n", math.Log2( ct0.Scale() ))
+	// // Reference scale is changed back to the current ciphertext's scale.
 	hbtp.ckksEvaluator.scale = ct0.Scale()
 
 	return ct0, ct1
 }
+
 
 func (hbtp *HalfBootstrapper) evaluateCheby(ct *Ciphertext) *Ciphertext {
 

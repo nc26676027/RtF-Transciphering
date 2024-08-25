@@ -3,13 +3,15 @@ package main
 import (
 	"fmt"
 	"math"
+	"runtime"
+	"time"
 
 	"github.com/ldsec/lattigo/v2/ckks"
 	"github.com/ldsec/lattigo/v2/utils"
 )
 
 func main() {
-
+	runtime.GOMAXPROCS(1)
 	var err error
 
 	var btp *ckks.Bootstrapper
@@ -36,7 +38,7 @@ func main() {
 
 	fmt.Println()
 	fmt.Printf("CKKS parameters: logN = %d, logSlots = %d, h = %d, logQP = %d, levels = %d, scale= 2^%f, sigma = %f \n", params.LogN(), params.LogSlots(), btpParams.H, params.LogQP(), params.Levels(), math.Log2(params.Scale()), params.Sigma())
-
+	
 	// Scheme context and keys
 	kgen = ckks.NewKeyGenerator(params)
 
@@ -78,11 +80,13 @@ func main() {
 	// and returns a ciphertext at level MaxLevel - k, where k is the depth of the bootstrapping circuit.
 	// CAUTION: the scale of the ciphertext MUST be equal (or very close) to params.Scale
 	// To equalize the scale, the function evaluator.SetScale(ciphertext, parameters.Scale) can be used at the expense of one level.
+	Start := time.Now()
 	fmt.Println()
 	fmt.Println("Bootstrapping...")
 	ciphertext2 := btp.Bootstrapp(ciphertext1)
 	fmt.Println("Done")
-
+	elapsed := time.Since(Start) // 计算从start到现在的持续时间
+	fmt.Printf("The bootstrap operation took %v\n", elapsed)
 	// Decrypt, print and compare with the plaintext values
 	fmt.Println()
 	fmt.Println("Precision of ciphertext vs. Bootstrapp(ciphertext)")

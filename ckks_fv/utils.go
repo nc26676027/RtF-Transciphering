@@ -1,6 +1,7 @@
 package ckks_fv
 
 import (
+	"encoding/binary"
 	"io"
 	"math"
 	"math/big"
@@ -8,6 +9,78 @@ import (
 
 	"github.com/ldsec/lattigo/v2/ring"
 )
+
+func htobe64(value uint64) []byte {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, value)
+	return buf
+}
+
+func calculateRow(prevRow, firstRow []uint64, q uint64) (out []uint64){
+	
+	PASTA_T := len(prevRow)
+	out = make([]uint64, PASTA_T)
+	for i := 0; i < PASTA_T; i++{
+		tmp := new(big.Int).Mul(new(big.Int).SetUint64(firstRow[i]), new(big.Int).SetUint64(prevRow[PASTA_T-1]))
+		tmp.Mod(tmp, new(big.Int).SetUint64(q) )
+		if i > 0 {
+			tmp.Add(tmp, new(big.Int).SetUint64(prevRow[i-1]))
+			tmp.Mod(tmp, new(big.Int).SetUint64(q) )
+		}
+		out[i] = tmp.Uint64()
+	}
+	return out
+}
+
+func GetRandomVector( vecSize int, rand io.Reader, q uint64 ) (vec []uint64){
+	vec = make([]uint64, vecSize)
+	for i := 0; i < vecSize; i++ {
+		vec[i] = SampleZqx(rand, q)
+	}
+	return vec
+}
+
+//----------------------------------------------------------------
+// (0  1  0  ... 0 ) ^ t
+// (0  0  1  ... 0 )
+// (.  .  .  ... . )
+// (.  .  .  ... . )
+// (.  .  .  ... . )
+// (0  0  0 ...  1 )
+// (r1 r2 r3 ... rt)
+// invertible by design
+func GetRandomMatrixPasta( matSize int, rand io.Reader, q uint64) (mat [][]uint64){
+	mat = make([][]uint64, matSize)
+	mat[0] = GetRandomVector(matSize, rand, q)
+	for i := 1; i < matSize; i++ {
+		mat[i] = calculateRow(mat[i-1], mat[0], q)
+	}  
+	return mat
+}
+
+func GetRandomMatrixMasta( matSize int, rand io.Reader, q uint64) (mat [][]uint64){
+	MastaAlpha := 3
+
+	mat = make([][]uint64, matSize)
+	for i := 0; i < len(mat); i++ {
+		mat[i] = make([]uint64, matSize)
+	}
+
+	fieldElement := GetRandomVector(matSize, rand, q)
+	for col := 0; col < matSize; col++ {
+		for row := 0; row < matSize; row++ {
+			ind := (row - col)
+			if ind < 0 {
+				tmp := new(big.Int).Mul( new(big.Int).SetUint64(fieldElement[ind + matSize]), new(big.Int).SetUint64(uint64(MastaAlpha)) )
+				tmp.Mod(tmp, new(big.Int).SetUint64(q) )
+				mat[row][col] = tmp.Uint64()
+			} else {
+				mat[row][col] = fieldElement[ind]
+			}
+		}
+	}
+	return mat
+}
 
 // Returns uniform random value in (0,q) by rejection sampling
 func SampleZqx(rand io.Reader, q uint64) (res uint64) {

@@ -56,6 +56,64 @@ func (b *BootstrappingParameters) Params() (p *Parameters, err error) {
 	return
 }
 
+// Chao added
+// Copy return a new HalfBootParameters from the BootstrappingParameters
+func (b *BootstrappingParameters) HalfbtpParams() *HalfBootParameters {
+	paramsCopy := &HalfBootParameters{
+		LogN:         b.LogN,
+		LogSlots:     b.LogSlots,
+		PlainModulus: b.t,
+		Scale:        b.Scale,
+		Sigma:        b.Sigma,
+		H:            b.H,
+		SinType:      b.SinType,
+		MessageRatio: b.MessageRatio,
+		SinRange:     b.SinRange,
+		SinDeg:       b.SinDeg,
+		SinRescal:    b.SinRescal,
+		ArcSineDeg:   b.ArcSineDeg,
+		MaxN1N2Ratio: b.MaxN1N2Ratio,
+	}
+
+	// KeySwitchModuli
+	paramsCopy.KeySwitchModuli = make([]uint64, len(b.KeySwitchModuli))
+	copy(paramsCopy.KeySwitchModuli, b.KeySwitchModuli)
+
+	// ResidualModuli
+	paramsCopy.ResidualModuli = make([]uint64, len(b.ResidualModuli))
+	copy(paramsCopy.ResidualModuli, b.ResidualModuli)
+
+	// CoeffsToSlotsModuli
+	paramsCopy.CoeffsToSlotsModuli.Qi = make([]uint64, b.CtSDepth(true))
+	copy(paramsCopy.CoeffsToSlotsModuli.Qi, b.CoeffsToSlotsModuli.Qi)
+
+	paramsCopy.CoeffsToSlotsModuli.ScalingFactor = make([][]float64, b.CtSDepth(true))
+	for i := range paramsCopy.CoeffsToSlotsModuli.ScalingFactor {
+		paramsCopy.CoeffsToSlotsModuli.ScalingFactor[i] = make([]float64, len(b.CoeffsToSlotsModuli.ScalingFactor[i]))
+		copy(paramsCopy.CoeffsToSlotsModuli.ScalingFactor[i], b.CoeffsToSlotsModuli.ScalingFactor[i])
+	}
+
+	// SineEvalModuli
+	paramsCopy.SineEvalModuli.Qi = make([]uint64, len(b.SineEvalModuli.Qi))
+	copy(paramsCopy.SineEvalModuli.Qi, b.SineEvalModuli.Qi)
+	paramsCopy.SineEvalModuli.ScalingFactor = b.SineEvalModuli.ScalingFactor
+
+	// SlotsToCoeffsModuli
+	paramsCopy.DiffScaleModulus.Qi = make([]uint64, b.StCDepth(true))
+	copy(paramsCopy.DiffScaleModulus.Qi, b.SlotsToCoeffsModuli.Qi)
+
+	paramsCopy.DiffScaleModulus.ScalingFactor = make([][]float64, b.StCDepth(true))
+	for i := range paramsCopy.DiffScaleModulus.ScalingFactor {
+		paramsCopy.DiffScaleModulus.ScalingFactor[i] = make([]float64, len(b.SlotsToCoeffsModuli.ScalingFactor[i]))
+		copy(paramsCopy.DiffScaleModulus.ScalingFactor[i], b.SlotsToCoeffsModuli.ScalingFactor[i])
+	}
+
+	return paramsCopy
+}
+
+
+
+
 // Copy return a new BootstrappingParameters which is a copy of the target
 func (b *BootstrappingParameters) Copy() *BootstrappingParameters {
 	paramsCopy := &BootstrappingParameters{
@@ -288,20 +346,69 @@ func (b *BootstrappingParameters) GenSlotsToCoeffsMatrix(scaling complex128, enc
 	return pDFT
 }
 
+// GenSlotsToCoeffsMatrix generates the factorized decoding matrix
+// scaling : constant by witch the all the matrices will be multuplied by
+// encoder : ckks.Encoder
+func (b *BootstrappingParameters) GenSlotsToCoeffsMatrixHalf(scaling complex128, encoder CKKSEncoder) []*PtDiagMatrix {
+
+	logSlots := b.LogSlots
+	slots := 1 << logSlots
+	depth := b.StCDepth(false)
+	logdSlots := logSlots + 1
+	if logdSlots == b.LogN {
+		logdSlots--
+	}
+
+	roots := computeRoots(slots << 1)
+	pow5 := make([]int, (slots<<1)+1)
+	pow5[0] = 1
+	for i := 1; i < (slots<<1)+1; i++ {
+		pow5[i] = pow5[i-1] * 5
+		pow5[i] &= (slots << 2) - 1
+	}
+
+	stcLevels := b.StCLevels()
+	// fmt.Println("stcLevels: ", stcLevels)
+
+	// CoeffsToSlots vectors
+	pDFT := make([]*PtDiagMatrix, len(stcLevels))
+
+	// var pVecDFT []map[int][]complex128
+	pVecDFT := computeDFTMatricesHalf(logSlots, logdSlots, depth, roots, pow5, scaling, false)
+	// Chao for imaginary remove bootstrap
+	for index, complexSlice := range pVecDFT[len(stcLevels)-1] {
+		for i := range complexSlice {
+			complexSlice[i] /= 2.0 
+		}
+		pVecDFT[len(stcLevels)-1][index] = complexSlice
+	}
+
+	cnt := 0
+	for i := range b.SlotsToCoeffsModuli.ScalingFactor {
+		for j := range b.SlotsToCoeffsModuli.ScalingFactor[b.StCDepth(true)-i-1] {
+			pDFT[cnt] = encoder.EncodeDiagMatrixAtLvl(stcLevels[cnt], pVecDFT[cnt], b.SlotsToCoeffsModuli.ScalingFactor[b.StCDepth(true)-i-1][j], b.MaxN1N2Ratio, logdSlots)
+			cnt++
+		}
+	}
+
+	return pDFT
+}
+
 func (b *BootstrappingParameters) SetLogSlots(logslot int) {
 	b.LogSlots = logslot
 }
 
 // DefaultBootstrapParams are default bootstrapping params for the bootstrapping.
 var DefaultBootstrapParams = []*BootstrappingParameters{
-
+	
 	// SET I
 	// 1546
+
 	{
 		LogN:     16,
 		LogSlots: 15,
 		Scale:    1 << 40,
-		t:        0x7fea0001, // temporal value for t
+		t:        0xffa0001, // temporal value for t
 		Sigma:    DefaultSigma,
 		ResidualModuli: []uint64{
 			0x10000000006e0001, // 60 Q0
@@ -365,7 +472,7 @@ var DefaultBootstrapParams = []*BootstrappingParameters{
 		SinType:      Cos1,
 		MessageRatio: 256.0,
 		SinRange:     25,
-		SinDeg:       63,
+		SinDeg:       59,
 		SinRescal:    2,
 		ArcSineDeg:   0,
 		MaxN1N2Ratio: 16.0,
@@ -491,7 +598,7 @@ var DefaultBootstrapParams = []*BootstrappingParameters{
 				0x7fffffff380001, // 55 Sine
 				0x80000000ca0001, // 55 Sine
 			},
-			ScalingFactor: 1 << 55,
+			ScalingFactor: 1 << 58,
 		},
 		CoeffsToSlotsModuli: CoeffsToSlotsModuli{
 			Qi: []uint64{
@@ -905,6 +1012,114 @@ func computeDFTMatrices(logSlots, logdSlots, maxDepth int, roots []complex128, p
 
 	return
 }
+//Chao add
+func computeDFTMatricesHalf(logSlots, logdSlots, maxDepth int, roots []complex128, pow5 []int, diffscale complex128, inverse bool) (plainVector []map[int][]complex128) {
+
+	bitreversed := false
+
+	var fftLevel, depth, nextfftLevel int
+
+	fftLevel = logSlots
+
+	var a, b, c [][]complex128
+
+	if inverse {
+		a, b, c = fftInvPlainVec(logSlots, 1<<logdSlots, roots, pow5)
+	} else {
+		a, b, c = fftPlainVec(logSlots, 1<<logdSlots, roots, pow5)
+	}
+
+	plainVector = make([]map[int][]complex128, maxDepth)
+
+	// We compute the chain of merge in order or reverse order depending if its DFT or InvDFT because
+	// the way the levels are collapsed has an inpact on the total number of rotations and keys to be
+	// stored. Ex. instead of using 255 + 64 plaintext vectors, we can use 127 + 128 plaintext vectors
+	// by reversing the order of the merging.
+	merge := make([]int, maxDepth)
+	for i := 0; i < maxDepth; i++ {
+
+		depth = int(math.Ceil(float64(fftLevel) / float64(maxDepth-i)))
+
+		if inverse {
+			merge[i] = depth
+		} else {
+			merge[len(merge)-i-1] = depth
+
+		}
+
+		fftLevel -= depth
+	}
+
+	fftLevel = logSlots
+	for i := 0; i < maxDepth; i++ {
+
+		if logSlots != logdSlots && !inverse && i == 0 {
+
+			// Special initial matrix for the repacking before SlotsToCoeffs
+			plainVector[i] = genRepackMatrix(logSlots, bitreversed)
+
+			// Merges this special initial matrix with the first layer of SlotsToCoeffs DFT
+			plainVector[i] = multiplyFFTMatrixWithNextFFTLevel(plainVector[i], logSlots, 2<<logSlots, fftLevel, a[logSlots-fftLevel], b[logSlots-fftLevel], c[logSlots-fftLevel], inverse, bitreversed)
+
+			// Continues the merging with the next layers if the total depth requires it.
+			nextfftLevel = fftLevel - 1
+			for j := 0; j < merge[i]-1; j++ {
+				plainVector[i] = multiplyFFTMatrixWithNextFFTLevel(plainVector[i], logSlots, 2<<logSlots, nextfftLevel, a[logSlots-nextfftLevel], b[logSlots-nextfftLevel], c[logSlots-nextfftLevel], inverse, bitreversed)
+				nextfftLevel--
+			}
+
+		} else {
+			// First layer of the i-th level of the DFT
+			plainVector[i] = genFFTDiagMatrix(logSlots, fftLevel, a[logSlots-fftLevel], b[logSlots-fftLevel], c[logSlots-fftLevel], inverse, bitreversed)
+
+			// Merges the layer with the next levels of the DFT if the total depth requires it.
+			nextfftLevel = fftLevel - 1
+			for j := 0; j < merge[i]-1; j++ {
+				plainVector[i] = multiplyFFTMatrixWithNextFFTLevel(plainVector[i], logSlots, 1<<logSlots, nextfftLevel, a[logSlots-nextfftLevel], b[logSlots-nextfftLevel], c[logSlots-nextfftLevel], inverse, bitreversed)
+				nextfftLevel--
+			}
+		}
+
+		fftLevel -= merge[i]
+	}
+
+	// Repacking after the CoeffsToSlots (we multiply the last DFT matrix with the vector [1, 1, ..., 1, 1, 0, 0, ..., 0, 0]).
+	// if logSlots != logdSlots && inverse {
+	// 	for j := range plainVector[maxDepth-1] {
+	// 		for x := 0; x < 1<<logSlots; x++ {
+	// 			plainVector[maxDepth-1][j][x+(1<<logSlots)] = complex(0, 0)
+	// 		}
+	// 	}
+	// }
+
+	// Rescaling of the DFT matrix of the SlotsToCoeffs/CoeffsToSlots
+	for j := range plainVector {
+		for x := range plainVector[j] {
+			for i := range plainVector[j][x] {
+					plainVector[j][x][i] *= diffscale
+			}
+		}
+	}
+
+	/*
+		for j := range plainVector {
+			for x := 0; x < 1<<logSlots; x++{
+				if plainVector[j][x] != nil{
+					fmt.Printf("%d :", x)
+					for i := range plainVector[j][x] {
+						fmt.Printf("%0.4f", plainVector[j][x][i])
+					}
+					fmt.Printf("\n")
+				}
+
+			}
+			fmt.Printf("\n")
+		}
+	*/
+
+	return
+}
+
 
 func genFFTDiagMatrix(logL, fftLevel int, a, b, c []complex128, forward, bitreversed bool) (vectors map[int][]complex128) {
 

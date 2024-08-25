@@ -85,7 +85,7 @@ func findHeraModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 
 	keystream = make([][]uint64, params.FVSlots())
 	for i := 0; i < params.FVSlots(); i++ {
-		keystream[i] = plainHera(numRound, nonces[i], key, params.PlainModulus())
+		keystream[i] = plainHera(numRound, nonces[i], key, params.PlainModulus())// symmetric keystream
 	}
 
 	// Find proper nbInitModDown value for fvHera
@@ -99,15 +99,15 @@ func findHeraModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	for i := 0; i < 16; i++ {
 		ksSlot := fvEvaluator.SlotsToCoeffsNoModSwitch(stCt[i])
 
-		invBudgets[i] = fvNoiseEstimator.InvariantNoiseBudget(ksSlot)
+		invBudgets[i] = fvNoiseEstimator.InvariantNoiseBudget(ksSlot)//？？
 		if invBudgets[i] < minInvBudget {
 			minInvBudget = invBudgets[i]
 		}
 		fvEvaluator.ModSwitchMany(ksSlot, ksSlot, ksSlot.Level())
 
-		ksCt := fvDecryptor.DecryptNew(ksSlot)
-		ksCoef := ckks_fv.NewPlaintextRingT(params)
-		fvEncoder.DecodeRingT(ksCt, ksCoef)
+		ksCt := fvDecryptor.DecryptNew(ksSlot) //decrypt？
+		ksCoef := ckks_fv.NewPlaintextRingT(params)//reEnc？
+		fvEncoder.DecodeRingT(ksCt, ksCoef)//decode to ring ksCoef
 
 		for j := 0; j < params.FVSlots(); j++ {
 			br_j := utils.BitReverse64(uint64(j), uint64(params.LogN()))
@@ -120,7 +120,7 @@ func findHeraModDown(numRound int, paramIndex int, radix int, fullCoeffs bool) {
 	}
 	fmt.Printf("Budget info : min %d in %v\n", minInvBudget, invBudgets)
 
-	qi := params.Qi()
+	qi := params.Qi() 
 	qiCount := params.QiCount()
 	logQi := make([]int, qiCount)
 	for i := 0; i < qiCount; i++ {
@@ -610,8 +610,8 @@ func testRtFRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs
 	fvEncoder = ckks_fv.NewMFVEncoder(params)
 	ckksEncoder = ckks_fv.NewCKKSEncoder(params)
 	fvEncryptor = ckks_fv.NewMFVEncryptorFromPk(params, pk)
-	ckksDecryptor = ckks_fv.NewCKKSDecryptor(params, sk)
-
+	ckksDecryptor = ckks_fv.NewCKKSDecryptor(params, sk)//params includes the ckks parm
+	
 	// Generating half-bootstrapping keys
 	rotationsHalfBoot := kgen.GenRotationIndexesForHalfBoot(params.LogSlots(), hbtpParams)
 	pDcds := fvEncoder.GenSlotToCoeffMatFV(radix)
@@ -770,7 +770,7 @@ func testRtFRubatoModDown(rubatoParam int, paramIndex int, radix int, fullCoeffs
 	}
 }
 
-func printDebug(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valuesWant []complex128, decryptor ckks_fv.CKKSDecryptor, encoder ckks_fv.CKKSEncoder) {
+func printDebug2(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valuesWant []complex128, decryptor ckks_fv.CKKSDecryptor, encoder ckks_fv.CKKSEncoder) {
 
 	valuesTest := encoder.DecodeComplex(decryptor.DecryptNew(ciphertext), params.LogSlots())
 	logSlots := params.LogSlots()
@@ -940,7 +940,23 @@ func findRubatoModDown(rubatoParam int, radix int) {
 	fmt.Printf("SlotsToCoeffs modDown : %v\n", stcModDown)
 }
 
-func main() {
+func printDebug2(params *ckks_fv.Parameters, ciphertext *ckks_fv.Ciphertext, valuesWant []complex128, decryptor ckks_fv.CKKSDecryptor, encoder ckks_fv.CKKSEncoder) {
+
+	valuesTest := encoder.DecodeComplex(decryptor.DecryptNew(ciphertext), params.LogSlots())
+	logSlots := params.LogSlots()
+	sigma := params.Sigma()
+
+	fmt.Printf("Level: %d (logQ = %d)\n", ciphertext.Level(), params.LogQLvl(ciphertext.Level()))
+	fmt.Printf("Scale: 2^%f\n", math.Log2(ciphertext.Scale()))
+	fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f...\n", valuesTest[0], valuesTest[1], valuesTest[2], valuesTest[3])
+	fmt.Printf("ValuesWant: %6.10f %6.10f %6.10f %6.10f...\n", valuesWant[0], valuesWant[1], valuesWant[2], valuesWant[3])
+
+	precStats := ckks_fv.GetPrecisionStats(params, encoder, nil, valuesWant, valuesTest, logSlots, sigma)
+
+	fmt.Println(precStats.String())
+}
+
+func main2() {
 	// findHeraModDown(4, 0, 2, false)
 	testPlainRubato(ckks_fv.RUBATO80L)
 	// testFVRubato(ckks_fv.RUBATO80L)

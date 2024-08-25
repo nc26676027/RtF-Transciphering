@@ -1342,6 +1342,7 @@ func (eval *mfvEvaluator) ModSwitchMany(ct0, ctOut *Ciphertext, nbModSwitch int)
 
 	level := ct0.Level()
 	if level < nbModSwitch {
+		fmt.Println("level: ", level, "nbMod: ", nbModSwitch)
 		panic("cannot ModSwitchMany: input does not have enough levels")
 	}
 

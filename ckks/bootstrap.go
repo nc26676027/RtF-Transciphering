@@ -1,8 +1,11 @@
 package ckks
 
 import (
-	"github.com/ldsec/lattigo/v2/ring"
+	"log"
 	"math"
+	"time"
+
+	"github.com/ldsec/lattigo/v2/ring"
 )
 
 // Bootstrapp re-encrypt a ciphertext at lvl Q0 to a ciphertext at MaxLevel-k where k is the depth of the bootstrapping circuit.
@@ -46,34 +49,34 @@ func (btp *Bootstrapper) Bootstrapp(ct *Ciphertext) *Ciphertext {
 	}
 
 	// ModUp ct_{Q_0} -> ct_{Q_L}
-	//t = time.Now()
+	t := time.Now()
 	ct = btp.modUp(ct)
-	//log.Println("After ModUp  :", time.Now().Sub(t), ct.Level(), ct.Scale())
+	log.Println("After ModUp  :", time.Now().Sub(t), ct.Level(), ct.Scale())
 
 	// Brings the ciphertext scale to sineQi/(Q0/scale) if its under
 	btp.evaluator.ScaleUp(ct, math.Round(btp.postscale/ct.Scale()), ct)
 
 	//SubSum X -> (N/dslots) * Y^dslots
-	//t = time.Now()
+	t = time.Now()
 	ct = btp.subSum(ct)
-	//log.Println("After SubSum :", time.Now().Sub(t), ct.Level(), ct.Scale())
+	log.Println("After SubSum :", time.Now().Sub(t), ct.Level(), ct.Scale())
 	// Part 1 : Coeffs to slots
 
-	//t = time.Now()
+	t = time.Now()
 	ct0, ct1 = CoeffsToSlots(ct, btp.pDFTInv, btp.evaluator)
-	//log.Println("After CtS    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
+	log.Println("After CtS    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 
 	// Part 2 : SineEval
-	//t = time.Now()
+	t = time.Now()
 	ct0, ct1 = btp.evaluateSine(ct0, ct1)
-	//log.Println("After Sine   :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
+	log.Println("After Sine   :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 
 	// Part 3 : Slots to coeffs
-	//t = time.Now()
+	t = time.Now()
 	ct0 = SlotsToCoeffs(ct0, ct1, btp.pDFT, btp.evaluator)
 
 	ct0.SetScale(math.Exp2(math.Round(math.Log2(ct0.Scale())))) // rounds to the nearest power of two
-	//log.Println("After StC    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
+	log.Println("After StC    :", time.Now().Sub(t), ct0.Level(), ct0.Scale())
 	return ct0
 }
 
